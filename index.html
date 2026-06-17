@@ -144,20 +144,7 @@
 
   .scroll-hint { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); opacity: 0.5; animation: bob 2s ease-in-out infinite; z-index: 100; }
 
-  .annotate-btn { position: fixed; bottom: 24px; right: 24px; z-index: 300; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: #fff; box-shadow: 0 8px 24px rgba(26,26,46,0.16); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, transform .15s; }
-  .annotate-btn:hover { transform: scale(1.06); }
-  .annotate-btn.active { background: var(--accent, #6C4DFB); color: #fff; }
-  .annotate-clear-btn { position: fixed; bottom: 24px; right: 78px; z-index: 300; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--line); background: #fff; box-shadow: 0 8px 24px rgba(26,26,46,0.16); font-size: 12px; color: var(--ink-soft); cursor: pointer; display: none; align-items: center; }
-  .annotate-clear-btn.show { display: flex; }
-  #annotateCanvas { position: absolute; top: 0; left: 0; z-index: 250; pointer-events: none; display: none; }
-  #annotateCanvas.active { pointer-events: auto; display: block; cursor: crosshair; }
-  .annotate-colors { position: fixed; bottom: 76px; right: 24px; z-index: 300; display: none; flex-direction: column; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 8px; box-shadow: 0 8px 24px rgba(26,26,46,0.16); }
-  .annotate-colors.show { display: flex; }
-  .annotate-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
-  .annotate-swatch.sel { border-color: var(--ink-soft); }
-  .annotate-eraser { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); background: #fff; cursor: pointer; padding: 0; font-size: 13px; display: flex; align-items: center; justify-content: center; }
-  .annotate-eraser.sel { border-color: var(--ink-soft); }
-  @keyframes bob { 0%,100%{transform:translate(-50%,0)} 50%{transform:translate(-50%,6px)} }
+@keyframes bob { 0%,100%{transform:translate(-50%,0)} 50%{transform:translate(-50%,6px)} }
   .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--purple); width: 0%; z-index: 200; transition: width 0.1s linear; }
   .arrow-right { font-size: 30px; color: var(--coral); font-weight: 300; }
 
@@ -201,17 +188,6 @@
 
 <div class="progress" id="progress"></div>
 
-<canvas id="annotateCanvas"></canvas>
-<button class="annotate-clear-btn" id="annotateClearBtn">clear</button>
-<div class="annotate-colors" id="annotateColors">
-  <button class="annotate-swatch sel" data-color="#FF5A5F" style="background:#FF5A5F"></button>
-  <button class="annotate-swatch" data-color="#2D8CFF" style="background:#2D8CFF"></button>
-  <button class="annotate-swatch" data-color="#2EBD59" style="background:#2EBD59"></button>
-  <button class="annotate-swatch" data-color="#FFC845" style="background:#FFC845"></button>
-  <button class="annotate-swatch" data-color="#1A1A2E" style="background:#1A1A2E"></button>
-  <button class="annotate-eraser" id="annotateEraser" title="Eraser">◻</button>
-</div>
-<button class="annotate-btn" id="annotateBtn" title="Annotate">✎</button>
 
 <!-- COVER / FRONT PAGE -->
 <section class="scene cover" data-scene="cover">
@@ -811,95 +787,6 @@ window.addEventListener('scroll',()=>{
   if(hint) hint.style.opacity=h.scrollTop>200?'0':'0.5';
 });
 
-// ---- Annotation overlay: freehand drawing on top of the page ----
-(function(){
-  const canvas = document.getElementById('annotateCanvas');
-  const btn = document.getElementById('annotateBtn');
-  const clearBtn = document.getElementById('annotateClearBtn');
-  const colors = document.getElementById('annotateColors');
-  const ctx = canvas.getContext('2d');
-  let drawing = false, active = false, currentColor = '#FF5A5F', erasing = false;
-
-  function applyStyle(){
-    if(erasing){
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.lineWidth = 24; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    } else {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = currentColor; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    }
-  }
-
-  function resize(){
-    const data = canvas.width ? ctx.getImageData(0,0,canvas.width,canvas.height) : null;
-    canvas.width = window.innerWidth;
-    canvas.height = document.documentElement.scrollHeight;
-    if(data) ctx.putImageData(data, 0, 0);
-    applyStyle();
-  }
-  resize();
-  window.addEventListener('resize', resize);
-  // Expand canvas if page grows (e.g. after animations reveal content)
-  const ro = new ResizeObserver(() => {
-    const need = document.documentElement.scrollHeight;
-    if(need > canvas.height){ const data = ctx.getImageData(0,0,canvas.width,canvas.height); canvas.height = need; ctx.putImageData(data,0,0); applyStyle(); }
-  });
-  ro.observe(document.body);
-
-  function pos(e){
-    const t = e.touches ? e.touches[0] : e;
-    // convert viewport coords → document coords so drawing sticks to page content
-    return { x: t.clientX + window.scrollX, y: t.clientY + window.scrollY };
-  }
-  function start(e){
-    drawing = true;
-    const p = pos(e);
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-  }
-  function move(e){
-    if(!drawing) return;
-    e.preventDefault();
-    const p = pos(e);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-  }
-  function end(){ drawing = false; }
-
-  canvas.addEventListener('mousedown', start);
-  canvas.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', end);
-  canvas.addEventListener('touchstart', start, { passive: true });
-  canvas.addEventListener('touchmove', move, { passive: false });
-  canvas.addEventListener('touchend', end);
-
-  btn.addEventListener('click', () => {
-    active = !active;
-    canvas.classList.toggle('active', active);
-    btn.classList.toggle('active', active);
-    clearBtn.classList.toggle('show', active);
-    colors.classList.toggle('show', active);
-  });
-  clearBtn.addEventListener('click', () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  });
-  colors.querySelectorAll('.annotate-swatch').forEach(sw => {
-    sw.addEventListener('click', () => {
-      erasing = false;
-      currentColor = sw.dataset.color;
-      applyStyle();
-      colors.querySelectorAll('.annotate-swatch, .annotate-eraser').forEach(s => s.classList.remove('sel'));
-      sw.classList.add('sel');
-    });
-  });
-  document.getElementById('annotateEraser').addEventListener('click', () => {
-    erasing = !erasing;
-    applyStyle();
-    colors.querySelectorAll('.annotate-swatch, .annotate-eraser').forEach(s => s.classList.remove('sel'));
-    if(erasing) document.getElementById('annotateEraser').classList.add('sel');
-    else { colors.querySelector('.annotate-swatch[data-color="'+currentColor+'"]').classList.add('sel'); }
-  });
-})();
 </script>
 </body>
 </html>

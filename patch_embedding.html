@@ -118,15 +118,10 @@
   .sm-in { background:var(--purple); }
   .sm-out { background:var(--coral); }
   /* N×D matrix grids for scene 6 */
-  .nmat { display:flex; flex-direction:column; gap:2px; border-radius:8px; overflow:hidden; padding:4px; border:1.5px solid; }
-  .nmat.nmat-x { border-color:var(--purple); background:rgba(108,77,251,0.06); }
-  .nmat.nmat-z { border-color:var(--coral); background:rgba(255,107,53,0.06); }
-  .nmat-row { display:flex; gap:2px; align-items:center; }
-  .nmat-cell { width:14px; height:14px; border-radius:2px; opacity:0; flex-shrink:0; }
-  .nmat-x .nmat-cell { background:var(--purple); }
-  .nmat-z .nmat-cell { background:var(--coral); }
-  .nmat-dots { height:12px; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--ink-soft); width:100%; }
-  .nmat-lbl { font-family:"SF Mono",ui-monospace,monospace; font-size:9px; font-weight:700; color:#fff; width:22px; text-align:center; flex-shrink:0; }
+  .matrix-x { display:grid; gap:2px; padding:6px; background:rgba(108,77,251,0.08); border:1.5px solid var(--purple); border-radius:10px; }
+  .matrix-z { display:grid; gap:2px; padding:6px; background:rgba(255,107,53,0.08); border:1.5px solid var(--coral); border-radius:10px; }
+  .mcell-x { width:16px; height:16px; background:var(--purple); border-radius:2px; opacity:0; }
+  .mcell-z { width:16px; height:16px; background:var(--coral); border-radius:2px; opacity:0; }
   .sm-ell { background:transparent; color:var(--ink-soft); height:14px; font-size:15px; line-height:1; }
   .op { font-size: 34px; font-weight: 300; color: var(--ink-soft); }
   .col-label { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); margin-top: 12px; text-align: center; }
@@ -361,7 +356,7 @@
   <div class="stage">
     <div class="item reveal d2">
       <div class="col-name name-purple">X</div>
-      <div class="nmat nmat-x" id="s6in"></div>
+      <div class="matrix-x" id="s6in" style="grid-template-columns:repeat(8,1fr);"></div>
       <div class="col-label">(N, 768) · N = 196</div>
     </div>
     <div class="op reveal d2">@</div>
@@ -369,7 +364,7 @@
     <div class="op reveal d3">=</div>
     <div class="item reveal d4">
       <div class="col-name name-coral">Z<sub>patch</sub></div>
-      <div class="nmat nmat-z" id="s6out"></div>
+      <div class="matrix-z" id="s6out" style="grid-template-columns:repeat(8,1fr);"></div>
       <div class="col-label">(N, 768) · N = 196</div>
     </div>
   </div>
@@ -669,66 +664,45 @@ async function animScene5(){
   }
 }
 
-// ---- Scene 6: N×D matrix multiply visualization
+// ---- Scene 6: N×D matrix multiply — X and Z as proper cell grids
 async function animScene6(){
   const inEl=document.getElementById('s6in'), outEl=document.getElementById('s6out'), E=document.getElementById('s6E');
   inEl.innerHTML=''; outEl.innerHTML=''; E.innerHTML='';
-  const COLS=10; // visible columns (schematic, real D=768)
-  const visRows=[{lbl:'x₁',idx:0},{lbl:'x₂',idx:1},{lbl:'x₃',idx:2}];
-  const dotsRow='DOTS';
-  const lastRow={lbl:'x₁₉₆',idx:195};
+  const COLS=8, ROWS=6; // schematic grid dimensions
 
-  function makeMatRow(mat, labelText, alpha){
-    const row=document.createElement('div'); row.className='nmat-row';
-    const lbl=document.createElement('div'); lbl.className='nmat-lbl'; lbl.textContent=labelText;
-    lbl.style.background= mat===inEl ? 'var(--purple)' : 'var(--coral)';
-    lbl.style.borderRadius='3px'; row.appendChild(lbl);
+  // Fill X (purple) row by row
+  for(let r=0;r<ROWS;r++){
     for(let c=0;c<COLS;c++){
-      const cell=document.createElement('div'); cell.className='nmat-cell';
-      cell.style.opacity=(alpha*(0.55+0.45*Math.random())).toFixed(2);
-      cell.style.transition='opacity .25s'; cell.style.opacity='0';
-      row.appendChild(cell);
+      const cell=document.createElement('div'); cell.className='mcell-x'; inEl.appendChild(cell);
     }
-    row.style.opacity='0'; row.style.transform='translateX(-18px)';
-    mat.appendChild(row);
-    return row;
-  }
-  function makeDotsRow(mat){
-    const d=document.createElement('div'); d.className='nmat-dots'; d.textContent='⋮';
-    mat.appendChild(d); return d;
-  }
-
-  // Build X rows
-  for(const r of visRows){
-    const row=makeMatRow(inEl, r.lbl, 1);
+    // reveal this row
+    const start=r*COLS;
+    for(let c=0;c<COLS;c++){
+      const cell=inEl.children[start+c];
+      cell.style.transition='opacity .2s';
+      setTimeout(()=>{ cell.style.opacity=(0.45+0.55*Math.random()).toFixed(2); }, c*18);
+    }
     await sleep(60);
-    row.style.transition='all .3s'; row.style.opacity='1'; row.style.transform='translateX(0)';
-    row.querySelectorAll('.nmat-cell').forEach((c,i)=>{ setTimeout(()=>{ c.style.opacity=(0.4+0.6*Math.random()).toFixed(2); },i*12); });
   }
-  makeDotsRow(inEl);
-  const lastInRow=makeMatRow(inEl, lastRow.lbl, 1);
-  await sleep(40);
-  lastInRow.style.transition='all .3s'; lastInRow.style.opacity='1'; lastInRow.style.transform='translateX(0)';
-  lastInRow.querySelectorAll('.nmat-cell').forEach((c,i)=>{ setTimeout(()=>{ c.style.opacity=(0.4+0.6*Math.random()).toFixed(2); },i*12); });
 
-  // Build E weight matrix
+  // Fill E (teal)
   for(let i=0;i<36;i++){ const c=document.createElement('div'); c.className='mcell'; c.style.opacity='0'; E.appendChild(c); }
   let k=0; for(const c of E.children){ c.style.transition='opacity .18s'; c.style.opacity=(0.45+0.55*Math.random()).toFixed(2); if(k++%6===0) await sleep(18); }
-  await sleep(140);
+  await sleep(160);
 
-  // Build Z output rows (animated in matching X)
-  const outRows=[{lbl:'e₁'},{lbl:'e₂'},{lbl:'e₃'}];
-  for(const r of outRows){
-    const row=makeMatRow(outEl, r.lbl, 1);
-    await sleep(70);
-    row.style.transition='all .35s'; row.style.opacity='1'; row.style.transform='translateX(0)';
-    row.querySelectorAll('.nmat-cell').forEach((c,i)=>{ setTimeout(()=>{ c.style.opacity=(0.4+0.6*Math.random()).toFixed(2); c.classList.add('pulsing'); setTimeout(()=>c.classList.remove('pulsing'),800); },i*14); });
+  // Fill Z (coral) row by row with pop
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const cell=document.createElement('div'); cell.className='mcell-z'; outEl.appendChild(cell);
+    }
+    const start=r*COLS;
+    for(let c=0;c<COLS;c++){
+      const cell=outEl.children[start+c];
+      cell.style.transition='opacity .2s';
+      setTimeout(()=>{ cell.style.opacity=(0.45+0.55*Math.random()).toFixed(2); cell.classList.add('pulsing'); setTimeout(()=>cell.classList.remove('pulsing'),700); }, c*18);
+    }
+    await sleep(75);
   }
-  makeDotsRow(outEl);
-  const lastOutRow=makeMatRow(outEl,'e₁₉₆',1);
-  await sleep(40);
-  lastOutRow.style.transition='all .35s'; lastOutRow.style.opacity='1'; lastOutRow.style.transform='translateX(0)';
-  lastOutRow.querySelectorAll('.nmat-cell').forEach((c,i)=>{ setTimeout(()=>{ c.style.opacity=(0.4+0.6*Math.random()).toFixed(2); },i*14); });
 }
 
 async function animScene7(){

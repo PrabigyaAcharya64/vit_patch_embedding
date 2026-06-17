@@ -28,6 +28,7 @@
     font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     line-height: 1.5;
+    position: relative;
   }
   .scene {
     min-height: 100vh;
@@ -143,7 +144,7 @@
   .annotate-btn.active { background: var(--accent, #6C4DFB); color: #fff; }
   .annotate-clear-btn { position: fixed; bottom: 24px; right: 78px; z-index: 300; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--line); background: #fff; box-shadow: 0 8px 24px rgba(26,26,46,0.16); font-size: 12px; color: var(--ink-soft); cursor: pointer; display: none; align-items: center; }
   .annotate-clear-btn.show { display: flex; }
-  #annotateCanvas { position: fixed; inset: 0; z-index: 250; pointer-events: none; display: none; }
+  #annotateCanvas { position: absolute; top: 0; left: 0; z-index: 250; pointer-events: none; display: none; }
   #annotateCanvas.active { pointer-events: auto; display: block; cursor: crosshair; }
   .annotate-colors { position: fixed; bottom: 76px; right: 24px; z-index: 300; display: none; flex-direction: column; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 8px; box-shadow: 0 8px 24px rgba(26,26,46,0.16); }
   .annotate-colors.show { display: flex; }
@@ -786,22 +787,28 @@ window.addEventListener('scroll',()=>{
   const ctx = canvas.getContext('2d');
   let drawing = false, active = false, currentColor = '#FF5A5F';
 
+  function applyStyle(){ ctx.strokeStyle = currentColor; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; }
+
   function resize(){
     const data = canvas.width ? ctx.getImageData(0,0,canvas.width,canvas.height) : null;
     canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvas.height = document.documentElement.scrollHeight;
     if(data) ctx.putImageData(data, 0, 0);
-    ctx.strokeStyle = currentColor;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    applyStyle();
   }
   resize();
   window.addEventListener('resize', resize);
+  // Expand canvas if page grows (e.g. after animations reveal content)
+  const ro = new ResizeObserver(() => {
+    const need = document.documentElement.scrollHeight;
+    if(need > canvas.height){ const data = ctx.getImageData(0,0,canvas.width,canvas.height); canvas.height = need; ctx.putImageData(data,0,0); applyStyle(); }
+  });
+  ro.observe(document.body);
 
   function pos(e){
     const t = e.touches ? e.touches[0] : e;
-    return { x: t.clientX, y: t.clientY };
+    // convert viewport coords → document coords so drawing sticks to page content
+    return { x: t.clientX + window.scrollX, y: t.clientY + window.scrollY };
   }
   function start(e){
     drawing = true;

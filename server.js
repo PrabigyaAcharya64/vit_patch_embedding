@@ -17,7 +17,7 @@ const TYPES = {
 
 http.createServer((req, res) => {
   let rel = decodeURIComponent(req.url.split('?')[0]);
-  if (rel === '/') rel = '/patch_embedding.html';
+  if (rel === '/') rel = '/index.html';
   const fp = path.normalize(path.join(ROOT, rel));
   if (!fp.startsWith(ROOT)) { res.writeHead(403); res.end('forbidden'); return; }
   fs.readFile(fp, (err, data) => {

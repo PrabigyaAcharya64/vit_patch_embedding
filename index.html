@@ -155,6 +155,8 @@
   .annotate-colors.show { display: flex; }
   .annotate-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
   .annotate-swatch.sel { border-color: var(--ink-soft); }
+  .annotate-eraser { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); background: #fff; cursor: pointer; padding: 0; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .annotate-eraser.sel { border-color: var(--ink-soft); }
   @keyframes bob { 0%,100%{transform:translate(-50%,0)} 50%{transform:translate(-50%,6px)} }
   .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--purple); width: 0%; z-index: 200; transition: width 0.1s linear; }
   .arrow-right { font-size: 30px; color: var(--coral); font-weight: 300; }
@@ -207,6 +209,7 @@
   <button class="annotate-swatch" data-color="#2EBD59" style="background:#2EBD59"></button>
   <button class="annotate-swatch" data-color="#FFC845" style="background:#FFC845"></button>
   <button class="annotate-swatch" data-color="#1A1A2E" style="background:#1A1A2E"></button>
+  <button class="annotate-eraser" id="annotateEraser" title="Eraser">◻</button>
 </div>
 <button class="annotate-btn" id="annotateBtn" title="Annotate">✎</button>
 
@@ -815,9 +818,17 @@ window.addEventListener('scroll',()=>{
   const clearBtn = document.getElementById('annotateClearBtn');
   const colors = document.getElementById('annotateColors');
   const ctx = canvas.getContext('2d');
-  let drawing = false, active = false, currentColor = '#FF5A5F';
+  let drawing = false, active = false, currentColor = '#FF5A5F', erasing = false;
 
-  function applyStyle(){ ctx.strokeStyle = currentColor; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; }
+  function applyStyle(){
+    if(erasing){
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineWidth = 24; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = currentColor; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    }
+  }
 
   function resize(){
     const data = canvas.width ? ctx.getImageData(0,0,canvas.width,canvas.height) : null;
@@ -874,11 +885,19 @@ window.addEventListener('scroll',()=>{
   });
   colors.querySelectorAll('.annotate-swatch').forEach(sw => {
     sw.addEventListener('click', () => {
+      erasing = false;
       currentColor = sw.dataset.color;
-      ctx.strokeStyle = currentColor;
-      colors.querySelectorAll('.annotate-swatch').forEach(s => s.classList.remove('sel'));
+      applyStyle();
+      colors.querySelectorAll('.annotate-swatch, .annotate-eraser').forEach(s => s.classList.remove('sel'));
       sw.classList.add('sel');
     });
+  });
+  document.getElementById('annotateEraser').addEventListener('click', () => {
+    erasing = !erasing;
+    applyStyle();
+    colors.querySelectorAll('.annotate-swatch, .annotate-eraser').forEach(s => s.classList.remove('sel'));
+    if(erasing) document.getElementById('annotateEraser').classList.add('sel');
+    else { colors.querySelector('.annotate-swatch[data-color="'+currentColor+'"]').classList.add('sel'); }
   });
 })();
 </script>

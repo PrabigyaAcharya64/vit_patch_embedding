@@ -117,6 +117,11 @@
   .smrow { width:120px; height:18px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:"SF Mono", ui-monospace, monospace; font-size:10px; font-weight:700; color:#fff; }
   .sm-in { background:var(--purple); }
   .sm-out { background:var(--coral); }
+  /* N×D matrix grids for scene 6 */
+  .matrix-x { display:grid; gap:2px; padding:6px; background:rgba(108,77,251,0.08); border:1.5px solid var(--purple); border-radius:10px; }
+  .matrix-z { display:grid; gap:2px; padding:6px; background:rgba(255,107,53,0.08); border:1.5px solid var(--coral); border-radius:10px; }
+  .mcell-x { width:16px; height:16px; background:var(--purple); border-radius:2px; opacity:0; }
+  .mcell-z { width:16px; height:16px; background:var(--coral); border-radius:2px; opacity:0; }
   .sm-ell { background:transparent; color:var(--ink-soft); height:14px; font-size:15px; line-height:1; }
   .op { font-size: 34px; font-weight: 300; color: var(--ink-soft); }
   .col-label { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); margin-top: 12px; text-align: center; }
@@ -349,11 +354,19 @@
 <section class="scene" data-scene="6">
   <h1 class="title reveal">All patches at once</h1>
   <div class="stage">
-    <div class="item reveal d2"><div class="col-name name-purple">X</div><div class="stackmat" id="s6in"></div><div class="col-label">(N, 768)</div></div>
+    <div class="item reveal d2">
+      <div class="col-name name-purple">X</div>
+      <div class="matrix-x" id="s6in" style="grid-template-columns:repeat(8,1fr);"></div>
+      <div class="col-label">(N, 768) · N = 196</div>
+    </div>
     <div class="op reveal d2">@</div>
-    <div class="item reveal d3"><div class="col-name name-teal">E</div><div class="matrix" id="s6E" style="grid-template-columns:repeat(6,1fr);"></div><div class="col-label">(768, 768)</div></div>
+    <div class="item reveal d3"><div class="col-name name-teal">E</div><div class="matrix" id="s6E" style="grid-template-columns:repeat(6,1fr);"></div><div class="col-label">(768, 768) · learnable</div></div>
     <div class="op reveal d3">=</div>
-    <div class="item reveal d4"><div class="col-name name-coral">Z<sub>patch</sub></div><div class="stackmat" id="s6out"></div><div class="col-label">(N, 768)</div></div>
+    <div class="item reveal d4">
+      <div class="col-name name-coral">Z<sub>patch</sub></div>
+      <div class="matrix-z" id="s6out" style="grid-template-columns:repeat(8,1fr);"></div>
+      <div class="col-label">(N, 768) · N = 196</div>
+    </div>
   </div>
   <div class="shape-big reveal d4" style="margin-top:30px;">(N, 768) @ (768, 768) → (N, 768)</div>
   <div class="note reveal d4">one matrix multiply projects all N patches · here N = 196, batch adds a leading B</div>
@@ -651,28 +664,45 @@ async function animScene5(){
   }
 }
 
-// ---- Scene 6: stack all N patch rows → one matrix multiply
+// ---- Scene 6: N×D matrix multiply — X and Z as proper cell grids
 async function animScene6(){
-  const inb=document.getElementById('s6in'), out=document.getElementById('s6out'), E=document.getElementById('s6E');
-  inb.innerHTML=''; out.innerHTML=''; E.innerHTML='';
-  const labIn=['x₁','x₂','x₃','⋮','xₙ'];
-  for(const lab of labIn){
-    const d=document.createElement('div');
-    if(lab==='⋮'){ d.className='smrow sm-ell'; d.textContent='⋮'; } else { d.className='smrow sm-in'; d.textContent=lab; }
-    d.style.opacity='0'; d.style.transform='translateX(-22px)'; inb.appendChild(d);
-    await sleep(70); d.style.transition='all .3s'; d.style.opacity='1'; d.style.transform='translateX(0)';
+  const inEl=document.getElementById('s6in'), outEl=document.getElementById('s6out'), E=document.getElementById('s6E');
+  inEl.innerHTML=''; outEl.innerHTML=''; E.innerHTML='';
+  const COLS=8, ROWS=6; // schematic grid dimensions
+
+  // Fill X (purple) row by row
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const cell=document.createElement('div'); cell.className='mcell-x'; inEl.appendChild(cell);
+    }
+    // reveal this row
+    const start=r*COLS;
+    for(let c=0;c<COLS;c++){
+      const cell=inEl.children[start+c];
+      cell.style.transition='opacity .2s';
+      setTimeout(()=>{ cell.style.opacity=(0.45+0.55*Math.random()).toFixed(2); }, c*18);
+    }
+    await sleep(60);
   }
+
+  // Fill E (teal)
   for(let i=0;i<36;i++){ const c=document.createElement('div'); c.className='mcell'; c.style.opacity='0'; E.appendChild(c); }
-  let k=0; for(const c of E.children){ c.style.transition='opacity .2s'; c.style.opacity=(0.5+0.5*Math.random()).toFixed(2); if(k++%6===0) await sleep(20); }
+  let k=0; for(const c of E.children){ c.style.transition='opacity .18s'; c.style.opacity=(0.45+0.55*Math.random()).toFixed(2); if(k++%6===0) await sleep(18); }
   await sleep(160);
-  const labOut=['e₁','e₂','e₃','⋮','eₙ'];
-  for(const lab of labOut){
-    const d=document.createElement('div');
-    if(lab==='⋮'){ d.className='smrow sm-ell'; d.textContent='⋮'; } else { d.className='smrow sm-out'; d.textContent=lab; }
-    d.style.opacity='0'; out.appendChild(d);
-    await sleep(85); d.classList.add('anim-pop'); d.style.opacity='1';
+
+  // Fill Z (coral) row by row with pop
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const cell=document.createElement('div'); cell.className='mcell-z'; outEl.appendChild(cell);
+    }
+    const start=r*COLS;
+    for(let c=0;c<COLS;c++){
+      const cell=outEl.children[start+c];
+      cell.style.transition='opacity .2s';
+      setTimeout(()=>{ cell.style.opacity=(0.45+0.55*Math.random()).toFixed(2); cell.classList.add('pulsing'); setTimeout(()=>cell.classList.remove('pulsing'),700); }, c*18);
+    }
+    await sleep(75);
   }
-  out.querySelectorAll('.sm-out').forEach((r,i)=>setTimeout(()=>{ r.classList.remove('pulsing'); void r.offsetWidth; r.classList.add('pulsing'); }, i*110));
 }
 
 async function animScene7(){

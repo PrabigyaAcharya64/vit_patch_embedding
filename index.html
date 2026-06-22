@@ -3,790 +3,185 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Patch Embedding — Vision Transformer</title>
+<title>Vision Transformers — Visual Explainers</title>
 <style>
   :root {
     --purple: #7C3AED;
     --teal: #0E9488;
     --teal-soft: #DCF1EF;
     --coral: #E2563C;
-    --coral-soft: #FBE4DF;
     --amber: #E8930C;
+    --green: #2A9D5C;
     --ink: #1A1A2E;
     --ink-soft: #5A5A72;
     --line: #E8E8EF;
     --bg: #FFFFFF;
-    --red: #E2563C;
-    --green: #2A9D5C;
-    --blue: #2D7DD2;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
   body {
-    background: var(--bg);
+    background: radial-gradient(1100px 620px at 50% -10%, #F2ECFD 0%, #FFFFFF 56%);
     color: var(--ink);
     font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     line-height: 1.5;
-    position: relative;
-  }
-  .scene {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 80px 40px;
-    position: relative;
-    border-bottom: 1px solid var(--line);
+    padding: 64px 24px;
   }
-  .scene-num { display: none; }
-  .title {
-    font-size: clamp(26px, 3.4vw, 40px); font-weight: 700; letter-spacing: -0.02em;
-    text-align: center; margin-bottom: 40px; max-width: 900px;
+  .kicker {
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 13px; letter-spacing: .24em; text-transform: uppercase;
+    color: var(--purple); font-weight: 700; margin-bottom: 18px;
   }
-  .shape {
-    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
-    font-size: 14px; color: var(--ink-soft); background: #F6F6FA;
-    border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px; display: inline-block;
+  h1 {
+    font-size: clamp(34px, 6vw, 64px); font-weight: 800; letter-spacing: -0.03em;
+    line-height: 1.04; text-align: center; max-width: 760px;
   }
-  .shape-big {
-    font-family: "SF Mono", ui-monospace, monospace; font-size: 18px; color: var(--ink);
-    background: #F6F6FA; border: 1px solid var(--line); border-radius: 10px;
-    padding: 8px 18px; display: inline-block; font-weight: 600;
+  .sub {
+    font-size: clamp(15px, 1.7vw, 18px); color: var(--ink-soft);
+    max-width: 560px; text-align: center; margin-top: 20px; line-height: 1.6;
   }
-  .stage { display: flex; align-items: center; justify-content: center; gap: 48px; flex-wrap: wrap; max-width: 1100px; }
-  .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(.2,.7,.2,1), transform 0.7s cubic-bezier(.2,.7,.2,1); }
-  .reveal.in { opacity: 1; transform: translateY(0); }
-  .d1 { transition-delay: 0.1s; } .d2 { transition-delay: 0.25s; }
-  .d3 { transition-delay: 0.4s; } .d4 { transition-delay: 0.55s; }
-  .d5 { transition-delay: 0.7s; } .d6 { transition-delay: 0.85s; }
-
-  .grid { display: grid; gap: 2px; background: var(--line); padding: 2px; border-radius: 6px; }
-  .cell { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; font-family: "SF Mono", ui-monospace, monospace; font-size: 10px; font-weight: 600; border-radius: 3px; }
-  .grid.g8 { gap: 2px; }
-  .grid.g8 .cell { width: 27px; height: 27px; font-size: 9px; border-radius: 3px; }
-  .grid.g16 { gap: 1px; }
-  .grid.g16 .cell { width: 18px; height: 18px; font-size: 7.5px; border-radius: 2px; }
-  .grid.g16.compact .cell { width: 13px; height: 13px; font-size: 5.5px; border-radius: 1.5px; }
-  .patch-source-img { width:170px; height:170px; object-fit:cover; border-radius:14px; box-shadow:0 12px 36px rgba(26,26,46,0.18); border:1px solid var(--line); display:block; }
-  .patch-link-wrap { display:flex; flex-direction:column; align-items:center; width:100%; max-width:1100px; }
-  .link-svg { width:min(100%,820px); height:90px; display:block; }
-  .link-path { fill:none; stroke-width:0.6; opacity:0.85; }
-  .link-r { stroke: var(--red); } .link-g { stroke: var(--green); } .link-b { stroke: var(--blue); }
-  .label-tag { font-weight: 700; font-size: 18px; margin-bottom: 10px; text-align: center; }
-  .tag-r { color: var(--red); } .tag-g { color: var(--green); } .tag-b { color: var(--blue); }
-  .channel-col { display: flex; flex-direction: column; align-items: center; }
-
-  .cat { width: 260px; height: 260px; border-radius: 16px; object-fit: cover; box-shadow: 0 12px 40px rgba(26,26,46,0.12); border: 1px solid var(--line); display: block; }
-  .dim-wrap { position: relative; padding: 0 36px 36px 36px; }
-  .dim-label { position: absolute; font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; justify-content: center; gap: 6px; }
-  .dim-w { top: -26px; left: 36px; right: 36px; }
-  .dim-h { left: -30px; top: 0; bottom: 36px; flex-direction: column; }
-  .dim-line { background: var(--ink-soft); }
-  .dim-w .dim-line { height: 1px; flex: 1; }
-  .dim-h .dim-line { width: 1px; flex: 1; }
-  .dim-tick { width: 1px; height: 6px; background: var(--ink-soft); }
-  .dim-h .dim-tick { width: 6px; height: 1px; }
-  .caption { font-family: "SF Mono", ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); margin-top: 14px; text-align: center; }
-  .zoombox { position: absolute; border: 2.5px solid var(--coral); border-radius: 5px; box-shadow: 0 0 0 2px rgba(255,255,255,0.6); opacity: 0; transition: opacity .5s; pointer-events: none; }
-
-  .vec { display: flex; flex-direction: column; gap: 3px; padding: 5px; border-radius: 8px; }
-  .vcell { width: 46px; height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: "SF Mono", ui-monospace, monospace; font-size: 10px; color: #fff; font-weight: 600; }
-  .vec-purple .vcell { background: var(--purple); }
-  .vec-coral  .vcell { background: var(--coral); }
-  .row-vec { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: 760px; }
-  .row-vec .vcell { width: 30px; height: 38px; }
-  .row-vec .ell { background: transparent; color: var(--ink-soft); font-size: 16px; width: 22px; }
-  .seg-label { font-family: "SF Mono", ui-monospace, monospace; font-size: 11px; font-weight: 700; align-self: center; padding: 0 2px; }
-
-  .matrix { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 6px; background: var(--teal-soft); border: 1.5px solid var(--teal); border-radius: 10px; }
-  .mcell { width: 20px; height: 20px; background: var(--teal); border-radius: 2px; opacity: 0.85; }
-  .postable { display:flex; flex-direction:column; gap:5px; padding:14px 16px; background:var(--teal-soft); border:1.5px solid var(--teal); border-radius:12px; }
-  .prow { display:flex; align-items:center; gap:5px; }
-  .prow-idx { font-family:"SF Mono", ui-monospace, monospace; font-size:11px; font-weight:700; color:var(--teal); width:62px; text-align:right; padding-right:8px; white-space:nowrap; }
-  .pcell { width:46px; height:26px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:"SF Mono", ui-monospace, monospace; font-size:10px; color:#fff; font-weight:600; }
-  .pdots { color:var(--ink-soft); font-size:13px; font-weight:700; padding:0 4px; }
-  .prow-tag { width:54px; font-family:"SF Mono", ui-monospace, monospace; font-size:11px; font-weight:700; color:var(--amber); padding-left:6px; white-space:nowrap; }
-  @media (max-width:700px){ .pcell{width:34px;height:23px;font-size:8.5px;} .prow-idx{width:54px;} .prow-tag{width:42px;font-size:9px;} }
-  .flat-grid { display:grid; grid-template-columns:repeat(16,1fr); gap:1px; background:var(--line); padding:2px; border-radius:5px; }
-  .fcell { width:15px; height:15px; border-radius:1px; transition:opacity .15s, box-shadow .1s, transform .1s; }
-  .fcell.lit { box-shadow:0 0 0 2px var(--coral); transform:scale(1.35); position:relative; z-index:2; }
-  .fcell.read { opacity:0.28; }
-  .stackmat { display:flex; flex-direction:column; gap:3px; }
-  .smrow { width:120px; height:18px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:"SF Mono", ui-monospace, monospace; font-size:10px; font-weight:700; color:#fff; }
-  .sm-in { background:var(--purple); }
-  .sm-out { background:var(--coral); }
-  /* N×D matrix grids for scene 6 */
-  .matrix-x { display:grid; gap:2px; padding:6px; background:rgba(108,77,251,0.08); border:1.5px solid var(--purple); border-radius:10px; }
-  .matrix-z { display:grid; gap:2px; padding:6px; background:rgba(255,107,53,0.08); border:1.5px solid var(--coral); border-radius:10px; }
-  .mcell-x { width:16px; height:16px; background:var(--purple); border-radius:2px; opacity:0; }
-  .mcell-z { width:16px; height:16px; background:var(--coral); border-radius:2px; opacity:0; }
-  .sm-ell { background:transparent; color:var(--ink-soft); height:14px; font-size:15px; line-height:1; }
-  .op { font-size: 34px; font-weight: 300; color: var(--ink-soft); }
-  .col-label { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); margin-top: 12px; text-align: center; }
-  .col-name { font-weight: 700; font-size: 15px; margin-bottom: 10px; text-align: center; }
-  .name-purple { color: var(--purple); } .name-teal { color: var(--teal); }
-  .name-coral { color: var(--coral); } .name-amber { color: var(--amber); }
-  .item { display: flex; flex-direction: column; align-items: center; }
-  .note { font-size: 13px; color: var(--ink-soft); margin-top: 14px; text-align: center; max-width: 560px; }
-
-  .seq { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; justify-content: center; }
-  .seqvec { width: 30px; height: 90px; border-radius: 6px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; font-family: "SF Mono", ui-monospace, monospace; font-size: 10px; color: #fff; font-weight: 700; }
-  .sv-coral { background: var(--coral); } .sv-amber { background: var(--amber); }
-  .sv-white { background: #fff; border: 2px solid var(--ink); color: var(--ink); }
-  .sv-ell { background: transparent; color: var(--ink-soft); font-size: 20px; align-items: center; }
-
-  .pipe { display: flex; flex-direction: column; align-items: center; gap: 0; }
-  .pipe-step { background: #F8F8FC; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 28px; font-size: 15px; font-weight: 600; text-align: center; min-width: 360px; }
-  .pipe-step .ps-shape { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); font-weight: 400; display: block; margin-top: 2px; }
-  .pipe-arrow { color: var(--ink-soft); font-size: 22px; line-height: 1.3; }
-
-  .scroll-hint { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); opacity: 0.5; animation: bob 2s ease-in-out infinite; z-index: 100; }
-
-@keyframes bob { 0%,100%{transform:translate(-50%,0)} 50%{transform:translate(-50%,6px)} }
-  .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--purple); width: 0%; z-index: 200; transition: width 0.1s linear; }
-  .arrow-right { font-size: 30px; color: var(--coral); font-weight: 300; }
-
-  .replay { display: none; }
-
-  @keyframes popIn { from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
-  .anim-pop { animation: popIn .35s cubic-bezier(.3,1.4,.5,1) both; }
-  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5)} 100%{box-shadow:0 0 0 14px rgba(124,58,237,0)} }
-  .pulsing { animation: pulse 1s ease-out; }
-  .patch-overlay-cell { border:1px solid rgba(226,86,60,0); display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,0.6); transform: scale(1); transition: border-color .3s, transform .4s cubic-bezier(.3,1.2,.4,1), background .25s, box-shadow .25s; }
-  .patch-overlay-cell.on { border-color: rgba(226,86,60,0.85); }
-  .patch-overlay-cell.split { transform: scale(0.8); border-color: rgba(226,86,60,0.95); background: rgba(226,86,60,0.07); }
-  .patch-overlay-cell.sweep { background: rgba(226,86,60,0.6); box-shadow: 0 0 12px rgba(226,86,60,0.55); }
-  .glow { box-shadow: 0 0 0 3px var(--coral); border-radius:6px; }
-
-  @media (max-width: 700px) { .stage { gap: 28px; } .pipe-step { min-width: 280px; } .scene { padding: 60px 20px; } }
-
-  /* ── cover / front page ── */
-  .cover { background: radial-gradient(1100px 620px at 50% -8%, #F2ECFD 0%, #FFFFFF 58%); }
-  .cover-kicker { font-family:"SF Mono", ui-monospace, monospace; font-size:13px; letter-spacing:.24em; text-transform:uppercase; color:var(--purple); font-weight:700; margin-bottom:20px; }
-  .cover-title { font-size:clamp(38px,7vw,82px); font-weight:800; letter-spacing:-0.03em; line-height:1.02; text-align:center; }
-  .cover-title span { display:block; color:var(--ink-soft); }
-  .cover-sub { font-size:clamp(15px,1.6vw,19px); color:var(--ink-soft); max-width:600px; text-align:center; margin-top:22px; line-height:1.6; }
-
-  /* ── the process / roadmap ── */
-  .steps { display:flex; align-items:stretch; justify-content:center; flex-wrap:wrap; gap:10px; max-width:1120px; margin-top:8px; }
-  .step-card { background:#F8F8FC; border:1.5px solid var(--line); border-radius:14px; padding:18px 16px; width:188px; display:flex; flex-direction:column; gap:9px; text-align:left; }
-  .step-num { width:30px; height:30px; border-radius:50%; background:var(--purple); color:#fff; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; font-family:"SF Mono", ui-monospace, monospace; }
-  .step-name { font-weight:700; font-size:15px; }
-  .step-desc { font-size:12.5px; color:var(--ink-soft); line-height:1.45; }
-  .step-shape { font-family:"SF Mono", ui-monospace, monospace; font-size:11px; color:var(--teal); font-weight:600; margin-top:auto; padding-top:8px; }
-  .step-arrow { display:flex; align-items:center; color:var(--ink-soft); font-size:20px; }
-  @media (max-width:980px){
-    .steps { flex-direction:column; align-items:center; }
-    .step-card { width:300px; }
-    .step-arrow { transform:rotate(90deg); }
+  .cards {
+    display: flex; gap: 26px; margin-top: 56px; flex-wrap: wrap; justify-content: center;
   }
+  .card {
+    width: 340px; background: #fff; border: 1.5px solid var(--line); border-radius: 20px;
+    padding: 30px 28px 26px; text-decoration: none; color: inherit;
+    display: flex; flex-direction: column; gap: 16px;
+    box-shadow: 0 14px 40px rgba(26,26,46,0.06);
+    transition: transform .2s cubic-bezier(.2,.7,.2,1), box-shadow .2s, border-color .2s;
+  }
+  .card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 22px 56px rgba(26,26,46,0.12);
+  }
+  .card.purple:hover { border-color: var(--purple); }
+  .card.teal:hover { border-color: var(--teal); }
+  .card-art {
+    height: 128px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .card.purple .card-art { background: rgba(124,58,237,0.06); }
+  .card.teal .card-art { background: rgba(14,148,136,0.06); }
+  .card-num {
+    font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  .card.purple .card-num { color: var(--purple); }
+  .card.teal .card-num { color: var(--teal); }
+  .card-title { font-size: 23px; font-weight: 700; letter-spacing: -0.01em; }
+  .card-desc { font-size: 14px; color: var(--ink-soft); line-height: 1.55; }
+  .card-foot {
+    display: flex; align-items: center; justify-content: space-between; margin-top: 4px;
+  }
+  .card-shape {
+    font-family: "SF Mono", ui-monospace, monospace; font-size: 11px; color: var(--ink-soft);
+    background: #F6F6FA; border: 1px solid var(--line); border-radius: 7px; padding: 3px 9px;
+  }
+  .card-go {
+    font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px;
+  }
+  .card.purple .card-go { color: var(--purple); }
+  .card.teal .card-go { color: var(--teal); }
+  .card-go .arr { transition: transform .2s; }
+  .card:hover .card-go .arr { transform: translateX(4px); }
+  .footnote {
+    margin-top: 52px; font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 12px; color: var(--ink-soft); opacity: .7; text-align: center;
+  }
+  @media (max-width: 720px) { .cards { gap: 18px; } .card { width: 100%; max-width: 360px; } }
 </style>
 </head>
 <body>
 
-<div class="progress" id="progress"></div>
+  <div class="kicker">Vision Transformer · ViT</div>
+  <h1>How a Vision Transformer sees an image</h1>
+  <p class="sub">Two interactive, step-by-step explainers — scroll through each one to watch the math unfold.</p>
 
+  <div class="cards">
 
-<!-- COVER / FRONT PAGE -->
-<section class="scene cover" data-scene="cover">
-  <h1 class="cover-title reveal">Vision Transformers<span>Patch Embedding Block</span></h1>
-</section>
-
-<!-- SCENE 1 -->
-<section class="scene" data-scene="1">
-  <div class="scene-num">Scene 1</div>
-  <h1 class="title reveal">An image is just numbers</h1>
-  <div class="stage" style="flex-direction:column; gap:34px;">
-    <!-- image → zoom -->
-    <div style="display:flex; align-items:center; gap:40px; flex-wrap:wrap; justify-content:center;">
-      <div class="item reveal d2">
-        <div style="position:relative; display:inline-block;">
-          <img class="cat" id="cat1" alt="cat">
-          <div id="zoombox" class="zoombox" style="left:43%; top:36%; width:21%; height:21%;"></div>
-        </div>
-        <div class="caption">224 × 224 × 3</div>
+    <a class="card purple" href="patch_embedding.html">
+      <div class="card-art">
+        <!-- patch grid → tokens -->
+        <svg width="240" height="100" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
+          <g fill="#7C3AED">
+            <g opacity="0.85">
+              <rect x="6"  y="14" width="14" height="14" rx="2"/>
+              <rect x="24" y="14" width="14" height="14" rx="2" opacity="0.6"/>
+              <rect x="42" y="14" width="14" height="14" rx="2"/>
+              <rect x="6"  y="32" width="14" height="14" rx="2" opacity="0.6"/>
+              <rect x="24" y="32" width="14" height="14" rx="2"/>
+              <rect x="42" y="32" width="14" height="14" rx="2" opacity="0.6"/>
+              <rect x="6"  y="50" width="14" height="14" rx="2"/>
+              <rect x="24" y="50" width="14" height="14" rx="2" opacity="0.6"/>
+              <rect x="42" y="50" width="14" height="14" rx="2"/>
+            </g>
+          </g>
+          <path d="M70 39 L96 39 M96 39 L90 34 M96 39 L90 44" stroke="#5A5A72" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <g fill="#7C3AED">
+            <rect x="110" y="22" width="13" height="34" rx="3" opacity="0.5"/>
+            <rect x="127" y="22" width="13" height="34" rx="3" opacity="0.7"/>
+            <rect x="144" y="22" width="13" height="34" rx="3"/>
+            <rect x="161" y="22" width="13" height="34" rx="3" opacity="0.7"/>
+            <rect x="178" y="22" width="13" height="34" rx="3" opacity="0.5"/>
+            <rect x="195" y="22" width="13" height="34" rx="3" opacity="0.85"/>
+          </g>
+        </svg>
       </div>
-      <div class="op reveal d3">→</div>
-      <div class="item reveal d3">
-        <div class="grid g8" id="zoomgrid" style="grid-template-columns:repeat(8,1fr);"></div>
-        <div class="caption">8 × 8 zoom</div>
+      <div class="card-num">Block 01</div>
+      <div class="card-title">Patch Embedding</div>
+      <div class="card-desc">An image becomes a sequence of token vectors — split into patches, flatten, project, add [CLS] and positions.</div>
+      <div class="card-foot">
+        <span class="card-shape">(197, 768)</span>
+        <span class="card-go">Open <span class="arr">→</span></span>
       </div>
-    </div>
-    <!-- break into 3 channels, then re-form -->
-    <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap; justify-content:center;">
-      <div class="channel-col reveal d4"><div class="label-tag tag-r">R</div><div class="grid g8" id="c1r" style="grid-template-columns:repeat(8,1fr);"></div></div>
-      <div class="channel-col reveal d4"><div class="label-tag tag-g">G</div><div class="grid g8" id="c1g" style="grid-template-columns:repeat(8,1fr);"></div></div>
-      <div class="channel-col reveal d4"><div class="label-tag tag-b">B</div><div class="grid g8" id="c1b" style="grid-template-columns:repeat(8,1fr);"></div></div>
-      <div class="op reveal d4">=</div>
-      <div class="item reveal d4"><div class="grid g8" id="c1rgb" style="grid-template-columns:repeat(8,1fr);"></div><div class="caption">stack 3 channels → color</div></div>
-    </div>
-  </div>
-  <button class="replay" data-replay="1">↻ replay</button>
-</section>
+    </a>
 
-<!-- THE PROCESS -->
-<section class="scene" data-scene="process">
-  <h1 class="cover-title reveal">The process</h1>
-</section>
-
-<!-- SCENE 2 -->
-<section class="scene" data-scene="2">
-  <div class="scene-num">Scene 2 · Step 1</div>
-  <h1 class="title reveal">Separate into N (P×P) patches</h1>
-  <div class="stage">
-    <div class="item reveal d2">
-      <div class="dim-wrap">
-        <div class="dim-label dim-w"><span class="dim-line"></span>W = 224<span class="dim-line"></span></div>
-        <div class="dim-label dim-h"><span class="dim-line"></span>H = 224<span class="dim-line"></span></div>
-        <div style="position: relative;">
-          <img class="cat" id="cat2" alt="cat">
-          <div id="patchgrid" style="position:absolute; inset:0; display:grid; grid-template-columns:repeat(14,1fr); grid-template-rows:repeat(14,1fr);"></div>
-        </div>
+    <a class="card teal" href="attention_module.html">
+      <div class="card-art">
+        <!-- tokens → attention heatmap → output -->
+        <svg width="240" height="100" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
+          <g fill="#E8930C">
+            <rect x="78" y="20" width="13" height="13" rx="2" opacity="0.9"/>
+            <rect x="93" y="20" width="13" height="13" rx="2" opacity="0.4"/>
+            <rect x="108" y="20" width="13" height="13" rx="2" opacity="0.7"/>
+            <rect x="123" y="20" width="13" height="13" rx="2" opacity="0.3"/>
+            <rect x="78" y="35" width="13" height="13" rx="2" opacity="0.4"/>
+            <rect x="93" y="35" width="13" height="13" rx="2" opacity="0.85"/>
+            <rect x="108" y="35" width="13" height="13" rx="2" opacity="0.5"/>
+            <rect x="123" y="35" width="13" height="13" rx="2" opacity="0.6"/>
+            <rect x="78" y="50" width="13" height="13" rx="2" opacity="0.6"/>
+            <rect x="93" y="50" width="13" height="13" rx="2" opacity="0.3"/>
+            <rect x="108" y="50" width="13" height="13" rx="2" opacity="0.9"/>
+            <rect x="123" y="50" width="13" height="13" rx="2" opacity="0.4"/>
+            <rect x="78" y="65" width="13" height="13" rx="2" opacity="0.3"/>
+            <rect x="93" y="65" width="13" height="13" rx="2" opacity="0.6"/>
+            <rect x="108" y="65" width="13" height="13" rx="2" opacity="0.4"/>
+            <rect x="123" y="65" width="13" height="13" rx="2" opacity="0.85"/>
+          </g>
+          <path d="M150 49 L176 49 M176 49 L170 44 M176 49 L170 54" stroke="#5A5A72" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <g fill="#2A9D5C">
+            <rect x="190" y="30" width="13" height="38" rx="3" opacity="0.6"/>
+            <rect x="207" y="30" width="13" height="38" rx="3"/>
+            <rect x="224" y="30" width="11" height="38" rx="3" opacity="0.8"/>
+          </g>
+        </svg>
       </div>
-      <div class="caption">N = 196 patches · 14 × 14 grid</div>
-    </div>
-    <div class="op reveal d3">→</div>
-    <div class="item reveal d3">
-      <div class="shape-big">N = (H × W) / P²</div>
-      <div style="height:14px"></div>
-      <div class="shape-big" id="s2calc">196 = (224 × 224) / 16²</div>
-      <div class="note">patch size P = 16</div>
-    </div>
-  </div>
-  <button class="replay" data-replay="2">↻ replay</button>
-</section>
-
-<!-- SCENE 3 -->
-<section class="scene" data-scene="3">
-  <div class="scene-num">Scene 3 · Step 2</div>
-  <h1 class="title reveal">Inside one patch <span style="font-weight:400; color:var(--ink-soft); font-size:0.6em;">(zoomed in)</span></h1>
-  <div class="stage" style="flex-direction:column; gap:34px;">
-    <div style="display:flex; align-items:center; gap:30px; flex-wrap:wrap; justify-content:center;">
-      <div class="item reveal d2">
-        <img src="single_patch.png" alt="single patch" class="patch-source-img" id="patchSourceImg">
-        <div class="caption">this patch · zoomed in</div>
+      <div class="card-num">Block 02</div>
+      <div class="card-title">Self-Attention</div>
+      <div class="card-desc">How patches talk to each other — Q, K, V, scaled dot-product attention, and multi-head attention.</div>
+      <div class="card-foot">
+        <span class="card-shape">softmax(QKᵀ/√dₖ)V</span>
+        <span class="card-go">Open <span class="arr">→</span></span>
       </div>
-    </div>
-    <!-- linked fan-out: the patch image feeds its R / G / B numbers -->
-    <div class="patch-link-wrap reveal d4">
-      <svg class="link-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <path class="link-path link-r" d="M50 0 C 50 35, 16.6 35, 16.6 100" />
-        <path class="link-path link-g" d="M50 0 C 50 35, 50 35, 50 100" />
-        <path class="link-path link-b" d="M50 0 C 50 35, 83.3 35, 83.3 100" />
-        <circle class="link-dot" cx="50" cy="1.5" r="1.6" fill="var(--ink-soft)" />
-      </svg>
-      <div class="stage" style="flex-wrap:nowrap; gap:26px;">
-        <div class="channel-col"><div class="label-tag tag-r">R</div><div class="grid g16 compact" id="rgrid" style="grid-template-columns: repeat(16, 1fr);"></div></div>
-        <div class="channel-col"><div class="label-tag tag-g">G</div><div class="grid g16 compact" id="ggrid" style="grid-template-columns: repeat(16, 1fr);"></div></div>
-        <div class="channel-col"><div class="label-tag tag-b">B</div><div class="grid g16 compact" id="bgrid" style="grid-template-columns: repeat(16, 1fr);"></div></div>
-      </div>
-    </div>
+    </a>
+
   </div>
-  <div class="shape-big reveal d4" style="margin-top:32px;">P × P × C = 16 × 16 × 3 = 768 numbers</div>
-  <button class="replay" data-replay="3">↻ replay</button>
-</section>
 
-<!-- SCENE 4 -->
-<section class="scene" data-scene="4">
-  <h1 class="title reveal">Flatten</h1>
-  <div class="stage" style="flex-direction: column; gap: 20px;">
-    <div class="item reveal d2">
-      <div class="flat-grid" id="flatgrid"></div>
-      <div class="caption">16 × 16 patch · R, G, B in turn</div>
-    </div>
-    <div class="op reveal d2" style="font-size:26px;">↓</div>
-    <div class="item reveal d3">
-      <div class="row-vec" id="flatrow"></div>
-      <div class="caption">flattened vector — read each channel row by row</div>
-    </div>
-    <div class="reveal" style="display:flex; flex-direction:column; align-items:center;" id="flatbracket">
-      <div style="width:80%; max-width:560px; height:1px; background:var(--ink-soft); position:relative;">
-        <span style="position:absolute;left:0;top:-4px;width:1px;height:8px;background:var(--ink-soft)"></span>
-        <span style="position:absolute;right:0;top:-4px;width:1px;height:8px;background:var(--ink-soft)"></span>
-      </div>
-      <div class="shape" style="margin-top:10px;">(P²·C,) = (16² · 3,) = (768,)</div>
-      <div class="note">R (256) then G (256) then B (256) → 768 numbers</div>
-    </div>
-  </div>
-  <button class="replay" data-replay="4">↻ replay</button>
-</section>
+  <div class="footnote">scroll · interactive · built for learning</div>
 
-<!-- SCENE 5 -->
-<section class="scene" data-scene="5">
-  <div class="scene-num">Scene 5 · Step 4</div>
-  <h1 class="title reveal">Linear projection</h1>
-  <div class="stage">
-    <div class="item reveal d2"><div class="col-name name-purple">x</div><div class="vec vec-purple" id="xvec"></div><div class="col-label">(768,)</div></div>
-    <div class="op reveal d2">@</div>
-    <div class="item reveal d3"><div class="col-name name-teal">E</div><div class="matrix" id="ematrix"></div><div class="col-label">(768 × 768) · learnable</div></div>
-    <div class="op reveal d3">=</div>
-    <div class="item reveal d4"><div class="col-name name-coral">embedding</div><div class="vec vec-coral" id="evec"></div><div class="col-label">(768,)</div></div>
-  </div>
-  <div class="shape-big reveal d4" style="margin-top:30px;">(768,) @ (768 × 768) → (768,)</div>
-  <div class="note reveal d4">Output dim D = 768 is a design choice. For ViT-Base, P²·C and D both equal 768.</div>
-  <button class="replay" data-replay="5">↻ replay</button>
-</section>
-
-<!-- SCENE 6 -->
-<section class="scene" data-scene="6">
-  <h1 class="title reveal">All patches at once</h1>
-  <div class="stage">
-    <div class="item reveal d2">
-      <div class="col-name name-purple">X</div>
-      <div class="matrix-x" id="s6in" style="grid-template-columns:repeat(8,1fr);"></div>
-      <div class="col-label">(N, 768) · N = 196</div>
-    </div>
-    <div class="op reveal d2">@</div>
-    <div class="item reveal d3"><div class="col-name name-teal">E</div><div class="matrix" id="s6E" style="grid-template-columns:repeat(6,1fr);"></div><div class="col-label">(768, 768) · learnable</div></div>
-    <div class="op reveal d3">=</div>
-    <div class="item reveal d4">
-      <div class="col-name name-coral">Z<sub>patch</sub></div>
-      <div class="matrix-z" id="s6out" style="grid-template-columns:repeat(8,1fr);"></div>
-      <div class="col-label">(N, 768) · N = 196</div>
-    </div>
-  </div>
-  <div class="shape-big reveal d4" style="margin-top:30px;">(N, 768) @ (768, 768) → (N, 768)</div>
-  <div class="note reveal d4">one matrix multiply projects all N patches · here N = 196, batch adds a leading B</div>
-  <button class="replay" data-replay="6">↻ replay</button>
-</section>
-
-<!-- SCENE 7 -->
-<section class="scene" data-scene="7">
-  <div class="scene-num">Scene 7 · Step 5</div>
-  <h1 class="title reveal">Prepend [CLS] token</h1>
-  <div class="stage"><div class="seq" id="clsseq"></div></div>
-  <div class="shape-big reveal d4" style="margin-top:34px;">(N + 1, 768) = (197, 768)</div>
-  <div class="note reveal d4">schematic — 8 of 196 patch tokens shown</div>
-  <button class="replay" data-replay="7">↻ replay</button>
-</section>
-
-<!-- SCENE 8 -->
-<section class="scene" data-scene="8">
-  <div class="scene-num">Scene 8 · Step 6</div>
-  <h1 class="title reveal">Positional embeddings are a learnable table</h1>
-  <div class="stage">
-    <div class="item reveal d2">
-      <div class="col-name name-teal">E_pos</div>
-      <div class="postable" id="postable"></div>
-      <div class="col-label">(N + 1, 768) = (197, 768) · one row per position</div>
-    </div>
-  </div>
-  <div class="note reveal d4" style="max-width:660px; margin-top:24px;">
-    A <b>learnable parameter</b>: each row is the position vector for one index (0, 1, 2, 3 … 196).
-    Initialized with random values, then updated by gradient descent during training. Row 0 holds the [CLS] position.
-  </div>
-  <button class="replay" data-replay="8">↻ replay</button>
-</section>
-
-<!-- SCENE 9 -->
-<section class="scene" data-scene="9">
-  <div class="scene-num">Scene 9 · Step 7</div>
-  <h1 class="title reveal">Add positional embeddings</h1>
-  <div class="stage" style="gap: 24px;">
-    <div class="item"><div class="seq" id="posA"></div><div class="col-label name-coral">eᵢ</div></div>
-    <div class="op">+</div>
-    <div class="item"><div class="seq" id="posB"></div><div class="col-label name-teal">pᵢ = E_pos[i]</div></div>
-    <div class="op">=</div>
-    <div class="item"><div class="seq" id="posC"></div><div class="col-label">zᵢ</div></div>
-  </div>
-  <div class="shape-big reveal d4" style="margin-top:34px;">zᵢ = eᵢ + pᵢ &nbsp;·&nbsp; (197, 768)</div>
-  <button class="replay" data-replay="9">↻ replay</button>
-</section>
-
-<!-- SCENE 10 -->
-<section class="scene" data-scene="10">
-  <div class="scene-num">Scene 10 · Recap</div>
-  <h1 class="title reveal">Full pipeline</h1>
-  <div class="pipe">
-    <div class="pipe-step reveal d1">Image <span class="ps-shape">224 × 224 × 3</span></div>
-    <div class="pipe-arrow reveal d1">↓</div>
-    <div class="pipe-step reveal d1">Split into patches · P = 16 <span class="ps-shape">N = 196 · each 16 × 16 × 3</span></div>
-    <div class="pipe-arrow reveal d2">↓</div>
-    <div class="pipe-step reveal d2">Flatten each patch <span class="ps-shape">(196, 768)</span></div>
-    <div class="pipe-arrow reveal d2">↓</div>
-    <div class="pipe-step reveal d2">Linear projection @ E (768 × 768) <span class="ps-shape">(196, 768)</span></div>
-    <div class="pipe-arrow reveal d3">↓</div>
-    <div class="pipe-step reveal d3">Prepend [CLS] <span class="ps-shape">(197, 768)</span></div>
-    <div class="pipe-arrow reveal d3">↓</div>
-    <div class="pipe-step reveal d3">Add E_pos <span class="ps-shape">(197, 768)</span></div>
-    <div class="pipe-arrow reveal d4">↓</div>
-    <div class="pipe-step reveal d4" style="border-color:var(--coral); background:var(--coral-soft);">z₀ … z₁₉₆ <span class="ps-shape">(197, 768)</span></div>
-  </div>
-</section>
-
-
-<script>
-const CAT_URL = "cat.jpg";
-
-function lerp(a,b,t){return a+(b-a)*t;}
-function redShade(v){const t=v/255; return `rgb(${Math.round(lerp(60,231,t))},${Math.round(lerp(20,86,t))},${Math.round(lerp(20,60,t))})`;}
-function greenShade(v){const t=v/255; return `rgb(${Math.round(lerp(20,42,t))},${Math.round(lerp(50,157,t))},${Math.round(lerp(30,92,t))})`;}
-function blueShade(v){const t=v/255; return `rgb(${Math.round(lerp(20,45,t))},${Math.round(lerp(40,125,t))},${Math.round(lerp(70,210,t))})`;}
-function txtColor(v){return v>140 ? '#222' : '#fff';}
-function px(r,c,seed){ const n = Math.sin((r*12.9898 + c*78.233 + seed*3.77))*43758.5453; return Math.floor((n - Math.floor(n))*256); }
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
-
-// ---- Real pixel sampler: draw cat.jpg into a 224×224 canvas and read it back.
-// Falls back to deterministic synthetic numbers if the canvas is tainted (file://).
-let PIX = null;                       // Uint8ClampedArray of 224*224*4, or null
-let pixReady;
-const pixPromise = new Promise(res => { pixReady = res; });
-(function loadPixels(){
-  const im = new Image();
-  im.onload = () => {
-    try {
-      const cv = document.createElement('canvas'); cv.width = 224; cv.height = 224;
-      const cx = cv.getContext('2d', { willReadFrequently: true });
-      cx.drawImage(im, 0, 0, 224, 224);
-      PIX = cx.getImageData(0, 0, 224, 224).data;
-    } catch(e) { PIX = null; }   // tainted canvas under file:// → use synthetic numbers
-    pixReady();
-  };
-  im.onerror = () => { PIX = null; pixReady(); };
-  im.src = CAT_URL;
-})();
-
-// Sample an n×n block of [R,G,B] starting at (x0,y0) in 224-space with the given step.
-function sampleBlock(x0, y0, step, n){
-  const out = [];
-  for(let r=0;r<n;r++) for(let c=0;c<n;c++){
-    if(PIX){
-      const x = Math.min(223, x0 + c*step), y = Math.min(223, y0 + r*step);
-      const i = (y*224 + x)*4;
-      out.push([PIX[i], PIX[i+1], PIX[i+2]]);
-    } else {
-      out.push([px(r,c,1), px(r,c,2), px(r,c,3)]);
-    }
-  }
-  return out;
-}
-
-// ---- Real pixel sampler for the single-patch image (single_patch.png), sampled on a 16×16 grid.
-let PATCHPIX = null, patchImW = 78, patchImH = 82;
-let patchPixReady;
-const patchPixPromise = new Promise(res => { patchPixReady = res; });
-(function loadPatchPixels(){
-  const im = new Image();
-  im.onload = () => {
-    try {
-      patchImW = im.naturalWidth; patchImH = im.naturalHeight;
-      const cv = document.createElement('canvas'); cv.width = patchImW; cv.height = patchImH;
-      const cx = cv.getContext('2d', { willReadFrequently: true });
-      cx.drawImage(im, 0, 0);
-      PATCHPIX = cx.getImageData(0, 0, patchImW, patchImH).data;
-    } catch(e) { PATCHPIX = null; }
-    patchPixReady();
-  };
-  im.onerror = () => { PATCHPIX = null; patchPixReady(); };
-  im.src = 'single_patch.png';
-})();
-
-// Sample a 16×16 grid of [R,G,B] evenly across the single-patch image.
-function samplePatchImage(){
-  const out = [];
-  for(let r=0;r<16;r++) for(let c=0;c<16;c++){
-    if(PATCHPIX){
-      const x = Math.min(patchImW-1, Math.floor((c+0.5)/16*patchImW));
-      const y = Math.min(patchImH-1, Math.floor((r+0.5)/16*patchImH));
-      const i = (y*patchImW + x)*4;
-      out.push([PATCHPIX[i], PATCHPIX[i+1], PATCHPIX[i+2]]);
-    } else {
-      out.push([px(r,c,4), px(r,c,5), px(r,c,6)]);
-    }
-  }
-  return out;
-}
-
-// visible cat images
-['cat1','cat2'].forEach(id=>{
-  const img=document.getElementById(id);
-  img.src=CAT_URL;
-  img.onerror=()=>{ img.style.background='linear-gradient(135deg,#F39C12,#E2563C 50%,#7C3AED)'; img.removeAttribute('src'); };
-});
-
-// ---- grid fill helpers
-async function fillColorGrid(id, block, stride, delay, pulse){
-  const g=document.getElementById(id); g.innerHTML='';
-  block.forEach(([R,G,B])=>{
-    const d=document.createElement('div'); d.className='cell';
-    d.style.background=`rgb(${R},${G},${B})`; d.style.opacity='0'; g.appendChild(d);
-  });
-  let i=0;
-  for(const c of g.children){ c.classList.add('anim-pop'); c.style.opacity='1'; if(i++%stride===0) await sleep(delay); }
-  if(pulse){ g.classList.remove('pulsing'); void g.offsetWidth; g.classList.add('pulsing'); }
-}
-async function fillChannelGrid(id, block, ch, shade, stride, delay){
-  const g=document.getElementById(id); g.innerHTML='';
-  block.forEach(p=>{
-    const v=p[ch];
-    const d=document.createElement('div'); d.className='cell';
-    d.style.background=shade(v); d.style.color=txtColor(v); d.textContent=v; d.style.opacity='0'; g.appendChild(d);
-  });
-  let i=0;
-  for(const c of g.children){ c.classList.add('anim-pop'); c.style.opacity='1'; if(i++%stride===0) await sleep(delay); }
-}
-
-// ---- Scene 1: image → 3 channels of numbers → re-formed color
-async function animScene1(){
-  await Promise.race([pixPromise, sleep(1400)]);
-  const block = sampleBlock(96, 80, 6, 8);          // an 8×8 zoom of the actual image
-  const zb=document.getElementById('zoombox'); if(zb) zb.style.opacity='1';
-  await fillColorGrid('zoomgrid', block, 3, 12, false);
-  await sleep(150);
-  await fillChannelGrid('c1r', block, 0, redShade, 2, 16);
-  await fillChannelGrid('c1g', block, 1, greenShade, 2, 16);
-  await fillChannelGrid('c1b', block, 2, blueShade, 2, 16);
-  await sleep(150);
-  await fillColorGrid('c1rgb', block, 3, 12, true);  // stack the 3 channels back into color
-}
-
-// ---- Scene 2: split the image into a 14×14 = 196 patch grid
-async function animScene2(){
-  const g=document.getElementById('patchgrid'); g.innerHTML='';
-  for(let i=0;i<196;i++){ const d=document.createElement('div'); d.className='patch-overlay-cell'; d.style.opacity='0'; g.appendChild(d); }
-  const cells=[...g.children];
-  // 1) draw the grid on with a diagonal wave
-  const order=[...cells.keys()].sort((a,b)=>((a%14)+Math.floor(a/14))-((b%14)+Math.floor(b/14)));
-  for(const idx of order){ cells[idx].style.opacity='1'; cells[idx].classList.add('on'); await sleep(7); }
-  await sleep(220);
-  // 2) split: tiles shrink so gaps open up → the image is cut into patches
-  cells.forEach(c=>c.classList.add('split'));
-  await sleep(480);
-  // 3) sweep a highlight across every patch, row by row
-  for(let i=0;i<196;i++){
-    cells[i].classList.add('sweep');
-    setTimeout(c=>c.classList.remove('sweep'), 230, cells[i]);
-    await sleep(9);
-  }
-  await sleep(220);
-  // 4) label patch 1 and pulse the formula
-  cells[0].textContent='1'; cells[0].style.background='rgba(226,86,60,0.5)'; cells[0].classList.add('pulsing');
-  const calc=document.getElementById('s2calc'); calc.classList.remove('pulsing'); void calc.offsetWidth; calc.classList.add('pulsing');
-}
-
-// ---- Scene 3: show the patched image, zoom to the real single-patch image, then fan it out into R/G/B
-async function animScene3(){
-  const img=document.getElementById('patchSourceImg');
-  img.style.opacity='0'; img.style.transform='scale(0.85)';
-  await sleep(40);
-  img.style.transition='all .4s cubic-bezier(.3,1.2,.4,1)'; img.style.opacity='1'; img.style.transform='scale(1)';
-  await sleep(350);
-  // 3) draw the fan-out links from the patch image to R / G / B
-  await Promise.race([patchPixPromise, sleep(1200)]);
-  const paths=[...document.querySelectorAll('.link-path')];
-  paths.forEach(p=>{ const len=p.getTotalLength(); p.style.strokeDasharray=len; p.style.strokeDashoffset=len; });
-  paths.forEach((p,i)=>{ p.style.transition='stroke-dashoffset .5s ease'; setTimeout(()=>{ p.style.strokeDashoffset='0'; }, i*120); });
-  await sleep(500);
-  // 4) split the real patch image into its R / G / B numbers
-  const block = samplePatchImage();
-  await fillChannelGrid('rgrid', block, 0, redShade, 4, 8);
-  await fillChannelGrid('ggrid', block, 1, greenShade, 4, 8);
-  await fillChannelGrid('bgrid', block, 2, blueShade, 4, 8);
-}
-
-// ---- Scene 4: unroll the 2-D patch (matrix) into a 1-D vector, row by row
-async function animScene4(){
-  const grid=document.getElementById('flatgrid'); grid.innerHTML='';
-  const row=document.getElementById('flatrow'); row.innerHTML='';
-  document.getElementById('flatbracket').classList.remove('in');
-  await Promise.race([pixPromise, sleep(1200)]);
-  const block = sampleBlock(0,0,1,16);              // real 16×16 patch, [R,G,B]
-  const channels=[
-    ['R',0,redShade,'var(--red)'],
-    ['G',1,greenShade,'var(--green)'],
-    ['B',2,blueShade,'var(--blue)']
-  ];
-  // build the 256 cells once; each channel pass repaints them
-  const cells=[];
-  for(let i=0;i<256;i++){ const d=document.createElement('div'); d.className='fcell'; cells.push(d); grid.appendChild(d); }
-  const paint=(ch,shade)=>{ for(let i=0;i<256;i++){ cells[i].className='fcell'; cells[i].style.background=shade(block[i][ch]); } };
-  // sweep the same 16×16 grid once per channel → strip ends as R… G… B…
-  for(const [name,ch,shade,color] of channels){
-    paint(ch,shade);                                // grid shows this channel's 256 numbers
-    grid.classList.remove('pulsing'); void grid.offsetWidth; grid.classList.add('pulsing');
-    const lab=document.createElement('div'); lab.className='seg-label'; lab.textContent=name+':'; lab.style.color=color; lab.style.opacity='0';
-    row.appendChild(lab); await sleep(70); lab.style.transition='opacity .2s'; lab.style.opacity='1';
-    for(let i=0;i<256;i++){
-      cells[i].classList.add('lit');
-      if(i<6){                                       // first 6 values of this channel drop into the strip
-        const v=block[i][ch];
-        const d=document.createElement('div'); d.className='vcell'; d.style.background=shade(v); d.style.color=txtColor(v); d.textContent=v; d.style.opacity='0'; row.appendChild(d);
-        await sleep(20); d.style.transition='all .2s'; d.style.opacity='1'; await sleep(42);
-      } else if(i%16===0){ await sleep(8); }         // one tick per remaining row
-      cells[i].classList.remove('lit'); cells[i].classList.add('read');
-    }
-    const e=document.createElement('div'); e.className='vcell ell'; e.textContent='…'; e.style.opacity='0'; row.appendChild(e);
-    await sleep(40); e.style.transition='opacity .2s'; e.style.opacity='1'; await sleep(140);
-  }
-  await sleep(160); document.getElementById('flatbracket').classList.add('in');
-}
-
-// ---- Scene 5: (768,) @ (768×768) → (768,)
-async function animScene5(){
-  const xv=document.getElementById('xvec'); xv.innerHTML='';
-  const ev=document.getElementById('evec'); ev.innerHTML='';
-  const m=document.getElementById('ematrix'); m.innerHTML='';
-  const block = sampleBlock(0,0,1,16);
-  for(let i=0;i<10;i++){const d=document.createElement('div');d.className='vcell';d.textContent=block[i][0];d.style.opacity='0';xv.appendChild(d);}
-  for(const c of xv.children){ c.classList.add('anim-pop'); c.style.opacity='1'; await sleep(30); }
-  for(let i=0;i<64;i++){const d=document.createElement('div');d.className='mcell';d.style.opacity='0';m.appendChild(d);}
-  const mc=[...m.children];
-  for(let i=0;i<mc.length;i++){ mc[i].style.transition='opacity .2s'; mc[i].style.opacity=(0.5+0.5*Math.random()).toFixed(2); if(i%4===0) await sleep(14); }
-  for(let i=0;i<10;i++){const d=document.createElement('div');d.className='vcell';d.textContent=(Math.random()*2-1).toFixed(1);d.style.opacity='0';ev.appendChild(d);}
-  const ec=[...ev.children];
-  for(let i=0;i<ec.length;i++){
-    const col=mc.filter((_,idx)=>idx%8===(i%8)); col.forEach(x=>x.style.boxShadow='0 0 0 2px var(--coral)');
-    await sleep(90); col.forEach(x=>x.style.boxShadow='none');
-    ec[i].classList.add('anim-pop'); ec[i].style.opacity='1';
-  }
-}
-
-// ---- Scene 6: N×D matrix multiply — X and Z as proper cell grids
-async function animScene6(){
-  const inEl=document.getElementById('s6in'), outEl=document.getElementById('s6out'), E=document.getElementById('s6E');
-  inEl.innerHTML=''; outEl.innerHTML=''; E.innerHTML='';
-  const COLS=8, ROWS=6; // schematic grid dimensions
-
-  // Fill X (purple) row by row
-  for(let r=0;r<ROWS;r++){
-    for(let c=0;c<COLS;c++){
-      const cell=document.createElement('div'); cell.className='mcell-x'; inEl.appendChild(cell);
-    }
-    // reveal this row
-    const start=r*COLS;
-    for(let c=0;c<COLS;c++){
-      const cell=inEl.children[start+c];
-      cell.style.transition='opacity .2s';
-      setTimeout(()=>{ cell.style.opacity=(0.45+0.55*Math.random()).toFixed(2); }, c*18);
-    }
-    await sleep(60);
-  }
-
-  // Fill E (teal)
-  for(let i=0;i<36;i++){ const c=document.createElement('div'); c.className='mcell'; c.style.opacity='0'; E.appendChild(c); }
-  let k=0; for(const c of E.children){ c.style.transition='opacity .18s'; c.style.opacity=(0.45+0.55*Math.random()).toFixed(2); if(k++%6===0) await sleep(18); }
-  await sleep(160);
-
-  // Fill Z (coral) row by row with pop
-  for(let r=0;r<ROWS;r++){
-    for(let c=0;c<COLS;c++){
-      const cell=document.createElement('div'); cell.className='mcell-z'; outEl.appendChild(cell);
-    }
-    const start=r*COLS;
-    for(let c=0;c<COLS;c++){
-      const cell=outEl.children[start+c];
-      cell.style.transition='opacity .2s';
-      setTimeout(()=>{ cell.style.opacity=(0.45+0.55*Math.random()).toFixed(2); cell.classList.add('pulsing'); setTimeout(()=>cell.classList.remove('pulsing'),700); }, c*18);
-    }
-    await sleep(75);
-  }
-}
-
-async function animScene7(){
-  const s=document.getElementById('clsseq'); s.innerHTML='';
-  for(let i=1;i<=8;i++){
-    const d=document.createElement('div'); d.className='seqvec sv-coral'; d.textContent='e'+i; d.style.opacity='0'; d.style.transform='translateY(16px)'; s.appendChild(d);
-    await sleep(60); d.style.transition='all .3s'; d.style.opacity='1'; d.style.transform='translateY(0)';
-  }
-  const ell=document.createElement('div'); ell.className='seqvec sv-ell'; ell.textContent='…'; s.appendChild(ell);
-  await sleep(250);
-  const cls=document.createElement('div'); cls.className='seqvec sv-amber'; cls.textContent='CLS'; cls.style.opacity='0'; cls.style.transform='translateX(-40px)';
-  s.insertBefore(cls,s.firstChild); await sleep(40);
-  cls.style.transition='all .4s cubic-bezier(.3,1.3,.5,1)'; cls.style.opacity='1'; cls.style.transform='translateX(0)'; cls.classList.add('pulsing');
-}
-
-async function animScene8(){
-  const t=document.getElementById('postable'); t.innerHTML='';
-  const COLS=8;
-  const rnd=()=>(Math.random()*2-1);
-  const tealShade=v=>{ const m=Math.min(1,Math.abs(v)); return `rgba(14,148,136,${(0.45+0.5*m).toFixed(2)})`; };
-  // rows: pos 0 (CLS) … pos 4, a ⋮ row, then the last position 196
-  const rows=['pos 0','pos 1','pos 2','pos 3','pos 4','DOTS','pos 196'];
-  for(const idx of rows){
-    const dots = idx==='DOTS';
-    const row=document.createElement('div'); row.className='prow'; row.style.opacity='0';
-    const lbl=document.createElement('div'); lbl.className='prow-idx'; lbl.textContent = dots ? '⋮' : idx;
-    if(idx==='pos 0') lbl.style.color='var(--amber)';
-    row.appendChild(lbl);
-    for(let c=0;c<COLS;c++){
-      const d=document.createElement('div'); d.className='pcell';
-      if(dots){ d.style.background='transparent'; d.style.color='var(--ink-soft)'; d.textContent='⋮'; }
-      else { const v=rnd(); d.style.background=tealShade(v); d.textContent=v.toFixed(2); }
-      row.appendChild(d);
-    }
-    const e=document.createElement('div'); e.className='pdots'; e.textContent = dots ? '' : '…'; row.appendChild(e);
-    const tg=document.createElement('div'); tg.className='prow-tag'; tg.textContent = (idx==='pos 0') ? '← [CLS]' : ''; row.appendChild(tg);
-    t.appendChild(row);
-    await sleep(50); row.classList.add('anim-pop'); row.style.opacity='1'; await sleep(150);
-  }
-  t.classList.remove('pulsing'); void t.offsetWidth; t.classList.add('pulsing');
-}
-
-async function animScene9(){
-  const A=document.getElementById('posA'),B=document.getElementById('posB'),C=document.getElementById('posC');
-  A.innerHTML='';B.innerHTML='';C.innerHTML='';
-  const la=['CLS','e1','e2','e3','e4'];
-  la.forEach((l,i)=>{const d=document.createElement('div');d.className='seqvec '+(i===0?'sv-amber':'sv-coral');d.textContent=l;d.style.opacity='0';A.appendChild(d);});
-  for(const c of A.children){c.classList.add('anim-pop');c.style.opacity='1';await sleep(60);}
-  for(let i=0;i<5;i++){const d=document.createElement('div');d.className='seqvec';d.style.background='var(--teal)';d.style.color='#fff';d.textContent='p'+i;d.style.opacity='0';B.appendChild(d);}
-  for(const c of B.children){c.classList.add('anim-pop');c.style.opacity='1';await sleep(60);}
-  const lc=['z0','z1','z2','z3','z4'];
-  lc.forEach(l=>{const d=document.createElement('div');d.className='seqvec sv-white';d.textContent=l;d.style.opacity='0';C.appendChild(d);});
-  await sleep(200);
-  const ca=[...A.children],cb=[...B.children],cc=[...C.children];
-  for(let i=0;i<5;i++){
-    ca[i].classList.add('glow'); cb[i].classList.add('glow'); await sleep(180);
-    cc[i].classList.add('anim-pop'); cc[i].style.opacity='1'; cc[i].classList.add('pulsing'); await sleep(120);
-    ca[i].classList.remove('glow'); cb[i].classList.remove('glow');
-  }
-}
-
-const animators={1:animScene1,2:animScene2,3:animScene3,4:animScene4,5:animScene5,6:animScene6,7:animScene7,8:animScene8,9:animScene9};
-const played={};
-
-const io=new IntersectionObserver((entries)=>{
-  entries.forEach(e=>{
-    if(e.isIntersecting){
-      e.target.querySelectorAll?.('.reveal').forEach(el=>el.classList.add('in'));
-      const sc=e.target.dataset?.scene;
-      if(sc && animators[sc] && !played[sc]){ played[sc]=true; setTimeout(()=>animators[sc](),350); }
-    }
-  });
-},{threshold:0.3});
-document.querySelectorAll('.scene').forEach(s=>io.observe(s));
-document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
-
-document.querySelectorAll('[data-replay]').forEach(btn=>{
-  btn.addEventListener('click',()=>{ const n=btn.dataset.replay; if(animators[n]) animators[n](); });
-});
-
-// Press "r" to replay the scene currently centered in the viewport
-window.addEventListener('keydown',(ev)=>{
-  if(ev.key!=='r' && ev.key!=='R') return;
-  if(ev.metaKey||ev.ctrlKey||ev.altKey) return;
-  const mid=window.innerHeight/2;
-  let current=null, best=Infinity;
-  document.querySelectorAll('.scene[data-scene]').forEach(s=>{
-    const rect=s.getBoundingClientRect();
-    const center=rect.top+rect.height/2;
-    const dist=Math.abs(center-mid);
-    if(dist<best){ best=dist; current=s; }
-  });
-  if(current){
-    const n=current.dataset.scene;
-    if(animators[n]) animators[n]();
-  }
-});
-
-const prog=document.getElementById('progress'), hint=document.getElementById('hint');
-window.addEventListener('scroll',()=>{
-  const h=document.documentElement;
-  prog.style.width=(h.scrollTop/(h.scrollHeight-h.clientHeight)*100)+'%';
-  if(hint) hint.style.opacity=h.scrollTop>200?'0':'0.5';
-});
-
-</script>
 </body>
 </html>

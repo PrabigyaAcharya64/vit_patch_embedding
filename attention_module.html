@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Self-Attention — Vision Transformer</title>
+<style>
+  :root {
+    --purple: #7C3AED;
+    --teal: #0E9488;
+    --teal-soft: #DCF1EF;
+    --coral: #E2563C;
+    --coral-soft: #FBE4DF;
+    --amber: #E8930C;
+    --amber-soft: #FCEBCF;
+    --green: #2A9D5C;
+    --green-soft: #DCF1E6;
+    --ink: #1A1A2E;
+    --ink-soft: #5A5A72;
+    --line: #E8E8EF;
+    --bg: #FFFFFF;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+    position: relative;
+  }
+  .scene {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 40px;
+    position: relative;
+    border-bottom: 1px solid var(--line);
+  }
+  .title {
+    font-size: clamp(26px, 3.4vw, 40px); font-weight: 700; letter-spacing: -0.02em;
+    text-align: center; margin-bottom: 40px; max-width: 900px;
+  }
+  .shape {
+    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+    font-size: 14px; color: var(--ink-soft); background: #F6F6FA;
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px; display: inline-block;
+  }
+  .shape-big {
+    font-family: "SF Mono", ui-monospace, monospace; font-size: 18px; color: var(--ink);
+    background: #F6F6FA; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 18px; display: inline-block; font-weight: 600;
+  }
+  .stage { display: flex; align-items: center; justify-content: center; gap: 48px; flex-wrap: wrap; max-width: 1120px; }
+  .item { display: flex; flex-direction: column; align-items: center; }
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(.2,.7,.2,1), transform 0.7s cubic-bezier(.2,.7,.2,1); }
+  .reveal.in { opacity: 1; transform: translateY(0); }
+  .d1 { transition-delay: 0.1s; } .d2 { transition-delay: 0.25s; }
+  .d3 { transition-delay: 0.4s; } .d4 { transition-delay: 0.55s; }
+  .d5 { transition-delay: 0.7s; } .d6 { transition-delay: 0.85s; }
+
+  .op { font-size: 34px; font-weight: 300; color: var(--ink-soft); }
+  .col-label { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); margin-top: 12px; text-align: center; }
+  .col-name { font-weight: 700; font-size: 15px; margin-bottom: 10px; text-align: center; }
+  .name-purple { color: var(--purple); } .name-teal { color: var(--teal); }
+  .name-coral { color: var(--coral); } .name-amber { color: var(--amber); }
+  .name-green { color: var(--green); }
+  .note { font-size: 13px; color: var(--ink-soft); margin-top: 14px; text-align: center; max-width: 600px; }
+
+  .cat { width: 240px; height: 240px; border-radius: 16px; object-fit: cover; box-shadow: 0 12px 40px rgba(26,26,46,0.12); border: 1px solid var(--line); display: block; }
+  .caption { font-family: "SF Mono", ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); margin-top: 14px; text-align: center; }
+
+  /* vectors (Q,K,V, outputs) */
+  .vec { display: flex; flex-direction: column; gap: 3px; padding: 5px; border-radius: 8px; }
+  .vcell { width: 46px; height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: "SF Mono", ui-monospace, monospace; font-size: 10px; color: #fff; font-weight: 600; }
+  .vec-purple .vcell { background: var(--purple); }
+  .vec-coral  .vcell { background: var(--coral); }
+  .vec-green  .vcell { background: var(--green); }
+  .vec-amber  .vcell { background: var(--amber); }
+  .vec-teal   .vcell { background: var(--teal); }
+
+  /* learnable weight matrices */
+  .matrix { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 6px; background: var(--teal-soft); border: 1.5px solid var(--teal); border-radius: 10px; }
+  .mcell { width: 18px; height: 18px; background: var(--teal); border-radius: 2px; opacity: 0; }
+
+  /* big input / output cell grids (matrix form) */
+  .gmat { display:grid; gap:2px; padding:6px; border-radius:10px; border:1.5px solid; }
+  .gmat-x { background:rgba(124,58,237,0.08); border-color:var(--purple); }
+  .gmat-coral { background:rgba(226,86,60,0.08); border-color:var(--coral); }
+  .gmat-green { background:rgba(42,157,92,0.08); border-color:var(--green); }
+  .gcell-x { width:15px; height:15px; background:var(--purple); border-radius:2px; opacity:0; }
+  .gcell-coral { width:15px; height:15px; background:var(--coral); border-radius:2px; opacity:0; }
+  .gcell-green { width:15px; height:15px; background:var(--green); border-radius:2px; opacity:0; }
+
+  /* attention heatmap */
+  .attn-grid { display:grid; gap:2px; padding:6px; background:rgba(232,147,12,0.06); border:1.5px solid var(--amber); border-radius:10px; }
+  .acell { width:18px; height:18px; background:var(--amber); border-radius:2px; opacity:0; }
+  .attn-grid.small .acell { width:14px; height:14px; }
+
+  /* token sequence row (recap) */
+  .seq { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; justify-content: center; }
+  .seqvec { width: 30px; height: 88px; border-radius: 6px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; font-family: "SF Mono", ui-monospace, monospace; font-size: 10px; color: #fff; font-weight: 700; }
+  .sv-purple { background: var(--purple); } .sv-amber { background: var(--amber); }
+  .sv-coral { background: var(--coral); } .sv-green { background: var(--green); }
+  .sv-ell { background: transparent; color: var(--ink-soft); font-size: 20px; align-items: center; }
+
+  /* Q/K/V branches (scene 3) */
+  .qkv-branch { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .branch-eq { font-family:"SF Mono", ui-monospace, monospace; font-weight:600; font-size:14px; }
+
+  /* mini horizontal vectors (k / v stacks, scene 4) */
+  .kstack { display:flex; flex-direction:column; gap:7px; }
+  .minivec { display:flex; gap:3px; align-items:center; }
+  .minivec .mlabel { font-family:"SF Mono", ui-monospace, monospace; font-size:11px; width:26px; color:var(--ink-soft); text-align:right; }
+  .mvcell { width:17px; height:17px; border-radius:3px; opacity:0; }
+
+  /* score / weight bars (scene 4) */
+  .score-list { display:flex; flex-direction:column; gap:8px; }
+  .score-row { display:flex; align-items:center; gap:7px; }
+  .score-klabel { font-family:"SF Mono", ui-monospace, monospace; font-size:11px; width:24px; color:var(--ink-soft); }
+  .score-track { width:180px; display:flex; align-items:center; gap:7px; }
+  .score-bar { height:17px; background:var(--amber); border-radius:4px; width:0; transition:width .5s cubic-bezier(.3,1,.4,1); }
+  .score-val { font-family:"SF Mono", ui-monospace, monospace; font-size:10px; color:var(--ink-soft); white-space:nowrap; }
+
+  .attn-flow { display:flex; align-items:center; justify-content:center; gap:26px; flex-wrap:wrap; }
+
+  /* labeled process box */
+  .proc-box { border:2px solid var(--purple); border-radius:14px; padding:22px 26px; font-weight:700; color:var(--purple); background:rgba(124,58,237,0.05); font-size:16px; text-align:center; }
+
+  /* lens metaphor (scene 6) */
+  .lens { position:absolute; top:24%; left:8%; width:96px; height:96px; border:3px solid var(--teal); border-radius:50%; background:rgba(14,148,136,0.10); box-shadow:0 6px 20px rgba(14,148,136,0.25); transition:left .9s ease, top .9s ease; pointer-events:none; }
+
+  /* wide matrix split into heads (scene 7) */
+  .wide-matrix { display:flex; gap:2px; padding:8px; background:var(--teal-soft); border:1.5px solid var(--teal); border-radius:10px; transition:gap .6s ease; }
+  .wide-matrix.split { gap:9px; }
+  .head-slice { display:flex; flex-direction:column; align-items:center; gap:2px; transition:transform .5s ease; }
+  .hcell { width:11px; height:11px; background:var(--teal); border-radius:2px; opacity:0; }
+  .hnum { font-family:"SF Mono", ui-monospace, monospace; font-size:8px; color:var(--teal); margin-top:4px; opacity:0; transition:opacity .35s ease; font-weight:700; }
+
+  /* head cards (scene 8) */
+  .head-card { display:flex; flex-direction:column; align-items:center; gap:8px; }
+
+  /* concat (scene 9) */
+  .hconcat { display:flex; gap:3px; transition:gap .55s ease; padding:5px; }
+  .hconcat.sep { gap:13px; }
+  .hgroup { display:flex; gap:2px; }
+  .hgcell { width:13px; height:24px; background:var(--green); border-radius:3px; opacity:0; }
+
+  /* pipeline (scene 10) */
+  .pipe { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .pipe-step { background: #F8F8FC; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 28px; font-size: 15px; font-weight: 600; text-align: center; min-width: 380px; }
+  .pipe-step .ps-shape { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); font-weight: 400; display: block; margin-top: 2px; }
+  .pipe-arrow { color: var(--ink-soft); font-size: 22px; line-height: 1.3; }
+
+  .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--purple); width: 0%; z-index: 200; transition: width 0.1s linear; }
+
+  /* annotation toolbar */
+  .annotate-btn { position: fixed; bottom: 24px; right: 24px; z-index: 300; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: #fff; box-shadow: 0 8px 24px rgba(26,26,46,0.16); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, transform .15s; }
+  .annotate-btn:hover { transform: scale(1.06); }
+  .annotate-btn.active { background: var(--purple); color: #fff; }
+  .annotate-clear-btn { position: fixed; bottom: 24px; right: 78px; z-index: 300; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--line); background: #fff; box-shadow: 0 8px 24px rgba(26,26,46,0.16); font-size: 12px; color: var(--ink-soft); cursor: pointer; display: none; align-items: center; }
+  .annotate-clear-btn.show { display: flex; }
+  #annotateCanvas { position: absolute; top: 0; left: 0; z-index: 250; pointer-events: none; display: none; }
+  #annotateCanvas.active { pointer-events: auto; display: block; cursor: crosshair; }
+  .annotate-colors { position: fixed; bottom: 76px; right: 24px; z-index: 300; display: none; flex-direction: column; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 8px; box-shadow: 0 8px 24px rgba(26,26,46,0.16); }
+  .annotate-colors.show { display: flex; }
+  .annotate-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .annotate-swatch.sel { border-color: var(--ink-soft); }
+  .annotate-eraser { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); background: #fff; cursor: pointer; padding: 0; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .annotate-eraser.sel { border-color: var(--ink-soft); }
+  .replay { display: none; }
+
+  @keyframes popIn { from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
+  .anim-pop { animation: popIn .35s cubic-bezier(.3,1.4,.5,1) both; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(42,157,92,.5)} 100%{box-shadow:0 0 0 14px rgba(42,157,92,0)} }
+  .pulsing { animation: pulse 1s ease-out; }
+  .glow { box-shadow: 0 0 0 3px var(--amber); border-radius:6px; }
+
+  /* cover */
+  .cover { background: radial-gradient(1100px 620px at 50% -8%, #F2ECFD 0%, #FFFFFF 58%); }
+  .cover-title { font-size:clamp(38px,7vw,82px); font-weight:800; letter-spacing:-0.03em; line-height:1.02; text-align:center; }
+  .cover-title span { display:block; color:var(--ink-soft); }
+  .cover-kicker { font-family:"SF Mono", ui-monospace, monospace; font-size:13px; letter-spacing:.24em; text-transform:uppercase; color:var(--purple); font-weight:700; margin-bottom:20px; }
+
+  @media (max-width: 760px) {
+    .stage { gap: 26px; }
+    .scene { padding: 60px 18px; }
+    .pipe-step { min-width: 280px; }
+    .cat { width: 190px; height: 190px; }
+    .score-track { width: 130px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { transition: none; }
+    * { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<canvas id="annotateCanvas"></canvas>
+<button class="annotate-clear-btn" id="annotateClearBtn">clear</button>
+<div class="annotate-colors" id="annotateColors">
+  <button class="annotate-swatch sel" data-color="#FF5A5F" style="background:#FF5A5F"></button>
+  <button class="annotate-swatch" data-color="#2D8CFF" style="background:#2D8CFF"></button>
+  <button class="annotate-swatch" data-color="#2EBD59" style="background:#2EBD59"></button>
+  <button class="annotate-swatch" data-color="#FFC845" style="background:#FFC845"></button>
+  <button class="annotate-swatch" data-color="#1A1A2E" style="background:#1A1A2E"></button>
+  <button class="annotate-eraser" id="annotateEraser" title="Eraser">◻</button>
+</div>
+<button class="annotate-btn" id="annotateBtn" title="Annotate">✎</button>
+
+<!-- COVER -->
+<section class="scene cover" data-scene="cover">
+  <h1 class="cover-title reveal">Vision Transformers<span>Attention Block</span></h1>
+</section>
+
+<!-- SCENE 1 — recap bridge -->
+<section class="scene" data-scene="1">
+  <h1 class="title reveal">From image to patch embeddings</h1>
+  <div class="stage">
+    <div class="item reveal d2">
+      <img class="cat" id="cat1" alt="cat">
+      <div class="caption">224 × 224 × 3</div>
+    </div>
+    <div class="op reveal d2">→</div>
+    <div class="item reveal d3">
+      <div class="proc-box">Patch<br>Embedding</div>
+    </div>
+    <div class="op reveal d3">→</div>
+    <div class="item reveal d4">
+      <div class="seq" id="s1seq"></div>
+      <div class="caption">(N+1, 768)</div>
+    </div>
+  </div>
+  <div class="note reveal d5">we already have these — now: how do patches talk to each other?</div>
+  <button class="replay" data-replay="1">↻ replay</button>
+</section>
+
+<!-- BLANK — concept explanation space -->
+<section class="scene" data-scene="blank"></section>
+
+<!-- SCENE 2 — take one patch embedding -->
+<section class="scene" data-scene="2">
+  <h1 class="title reveal">Take one patch embedding</h1>
+  <div class="stage" style="flex-direction:column; gap:8px;">
+    <div class="seq reveal d2" id="s2seq"></div>
+    <div class="op" id="s2arrow" style="opacity:0; transition:opacity .4s; font-size:24px;">↓</div>
+    <div class="item" id="s2pick" style="opacity:0; transition:opacity .5s, transform .5s cubic-bezier(.3,1.2,.4,1); transform:translateY(14px);">
+      <div class="col-name name-purple">eᵢ &nbsp;<span style="font-weight:400; color:var(--ink-soft); font-size:0.8em;">— a single token</span></div>
+      <div class="vec vec-purple" id="s2vec" style="flex-direction:row; gap:3px;"></div>
+      <div class="col-label">one patch embedding · shape (768,)</div>
+    </div>
+  </div>
+  <button class="replay" data-replay="2">↻ replay</button>
+</section>
+
+<!-- SCENE 3 — project into Q, K, V -->
+<section class="scene" data-scene="3">
+  <h1 class="title reveal">Project into Q, K, V</h1>
+  <div class="item reveal d2">
+    <div class="col-name name-purple">x = eᵢ</div>
+    <div class="vec vec-purple" id="s3x"></div>
+    <div class="col-label">(768,)</div>
+  </div>
+  <div class="op reveal d2" style="font-size:24px; margin:8px 0;">↓</div>
+  <div class="stage" style="align-items:flex-start; gap:46px;">
+    <div class="qkv-branch reveal d3">
+      <div class="branch-eq">x @ <span class="name-teal">Wq</span></div>
+      <div class="matrix" id="s3Wq" style="grid-template-columns:repeat(4,1fr);"></div>
+      <div class="col-label">(768 × 64)</div>
+      <div class="op" style="font-size:22px;">↓</div>
+      <div class="col-name name-coral">q</div>
+      <div class="vec vec-coral" id="s3q"></div>
+      <div class="col-label">(64,)</div>
+    </div>
+    <div class="qkv-branch reveal d4">
+      <div class="branch-eq">x @ <span class="name-teal">Wk</span></div>
+      <div class="matrix" id="s3Wk" style="grid-template-columns:repeat(4,1fr);"></div>
+      <div class="col-label">(768 × 64)</div>
+      <div class="op" style="font-size:22px;">↓</div>
+      <div class="col-name name-coral">k</div>
+      <div class="vec vec-coral" id="s3k"></div>
+      <div class="col-label">(64,)</div>
+    </div>
+    <div class="qkv-branch reveal d5">
+      <div class="branch-eq">x @ <span class="name-teal">Wv</span></div>
+      <div class="matrix" id="s3Wv" style="grid-template-columns:repeat(4,1fr);"></div>
+      <div class="col-label">(768 × 64)</div>
+      <div class="op" style="font-size:22px;">↓</div>
+      <div class="col-name name-coral">v</div>
+      <div class="vec vec-coral" id="s3v"></div>
+      <div class="col-label">(64,)</div>
+    </div>
+  </div>
+  <div class="note reveal d6">Q = what I'm looking for · K = what I offer · V = what I actually pass on</div>
+  <button class="replay" data-replay="3">↻ replay</button>
+</section>
+
+<!-- SCENE 4 — scaled dot-product attention -->
+<section class="scene" data-scene="4">
+  <h1 class="title reveal">Scaled dot-product attention</h1>
+  <div class="stage" style="flex-direction:column; gap:22px;">
+    <div class="attn-flow reveal d2">
+      <div class="item"><div class="col-name name-coral">q</div><div class="vec vec-coral" id="s4q"></div></div>
+      <div class="op">·</div>
+      <div class="item"><div class="col-name name-coral">kⱼᵀ</div><div class="kstack" id="s4ks"></div></div>
+      <div class="op">→</div>
+      <div class="item"><div class="col-name name-amber">q · kⱼ</div><div class="score-list" id="s4scores"></div></div>
+    </div>
+    <div class="shape reveal d3" id="s4softlabel">÷ √dₖ = ÷ 8 , then softmax →</div>
+    <div class="attn-flow reveal d3">
+      <div class="item"><div class="col-name name-coral">vⱼ</div><div class="kstack" id="s4vs"></div></div>
+      <div class="op">×</div>
+      <div class="item"><div class="col-name name-amber">weights</div><div class="score-list" id="s4weights"></div></div>
+      <div class="op">=</div>
+      <div class="item"><div class="col-name name-green">zᵢ</div><div class="vec vec-green" id="s4out"></div><div class="col-label">(64,)</div></div>
+    </div>
+  </div>
+  <div class="shape-big reveal d4" style="margin-top:30px;">zᵢ = Σⱼ softmax( q · kⱼ / √dₖ ) · vⱼ</div>
+  <div class="note reveal d4">each patch now contains info from ALL patches</div>
+  <button class="replay" data-replay="4">↻ replay</button>
+</section>
+
+<!-- SCENE 5 — every patch in parallel -->
+<section class="scene" data-scene="5">
+  <h1 class="title reveal">Do it for every patch (in parallel)</h1>
+  <div class="stage" style="gap:30px;">
+    <div class="item reveal d2">
+      <div class="col-name name-purple">X</div>
+      <div class="gmat gmat-x" id="s5x"></div>
+      <div class="col-label">(N+1, 768)</div>
+    </div>
+    <div class="op reveal d2">→</div>
+    <div class="item reveal d3">
+      <div class="col-name name-amber">softmax(QKᵀ/√dₖ)</div>
+      <div class="attn-grid" id="s5attn"></div>
+      <div class="col-label">(N+1, N+1)</div>
+    </div>
+    <div class="op reveal d4">@</div>
+    <div class="item reveal d4">
+      <div class="col-name name-coral">V</div>
+      <div class="gmat gmat-coral" id="s5v"></div>
+      <div class="col-label">(N+1, 64)</div>
+    </div>
+    <div class="op reveal d5">=</div>
+    <div class="item reveal d5">
+      <div class="col-name name-green">Z</div>
+      <div class="gmat gmat-green" id="s5out"></div>
+      <div class="col-label">(N+1, 64)</div>
+    </div>
+  </div>
+  <div class="shape-big reveal d5" style="margin-top:30px;">Attention = softmax( Q Kᵀ / √dₖ ) V</div>
+  <div class="note reveal d5">one matrix multiply handles all patches at once</div>
+  <button class="replay" data-replay="5">↻ replay</button>
+</section>
+
+<!-- SCENE 6 — the problem -->
+<section class="scene" data-scene="6">
+  <h1 class="title reveal">The problem: one perspective isn't enough</h1>
+  <div class="stage">
+    <div class="item reveal d2">
+      <div style="position:relative; display:inline-block;">
+        <img class="cat" id="cat6" alt="cat">
+        <div class="lens" id="s6lens"></div>
+      </div>
+      <div class="caption">one Wq / Wk / Wv → one kind of relationship</div>
+    </div>
+  </div>
+  <div class="shape-big reveal d3" style="margin-top:26px;">color? &nbsp; shape? &nbsp; texture? &nbsp; position? &nbsp; <span class="name-amber" id="s6q">?</span></div>
+  <div class="note reveal d4">a single projection sees the image from only ONE perspective</div>
+  <div class="shape reveal d4" style="margin-top:8px; border-color:var(--purple); color:var(--purple);">Solution → Multi-Head Attention</div>
+  <button class="replay" data-replay="6">↻ replay</button>
+</section>
+
+<!-- SCENE 7 — split into heads -->
+<section class="scene" data-scene="7">
+  <h1 class="title reveal">Multi-Head Attention — split into heads</h1>
+  <div class="item reveal d2">
+    <div class="col-name name-teal">Wq / Wk / Wv</div>
+    <div class="wide-matrix" id="s7wide"></div>
+    <div class="col-label">(768 × 768)</div>
+  </div>
+  <div class="shape-big reveal d3" style="margin-top:26px;">h = 12 heads · dₖ = 768 / 12 = 64</div>
+  <div class="note reveal d4">each head learns a DIFFERENT relationship — one sees edges, one color, one position …</div>
+  <button class="replay" data-replay="7">↻ replay</button>
+</section>
+
+<!-- SCENE 8 — each head attends independently -->
+<section class="scene" data-scene="8">
+  <h1 class="title reveal">Each head attends independently</h1>
+  <div class="stage" id="s8stage" style="gap:34px; align-items:flex-start;">
+    <div class="head-card reveal d2">
+      <div class="col-name name-amber">head 1</div>
+      <div class="attn-grid small" id="s8h1"></div>
+      <div class="op" style="font-size:22px;">↓</div>
+      <div class="vec vec-green" id="s8o1"></div>
+    </div>
+    <div class="head-card reveal d3">
+      <div class="col-name name-amber">head 2</div>
+      <div class="attn-grid small" id="s8h2"></div>
+      <div class="op" style="font-size:22px;">↓</div>
+      <div class="vec vec-green" id="s8o2"></div>
+    </div>
+    <div class="head-card reveal d4">
+      <div class="col-name name-amber">head 3</div>
+      <div class="attn-grid small" id="s8h3"></div>
+      <div class="op" style="font-size:22px;">↓</div>
+      <div class="vec vec-green" id="s8o3"></div>
+    </div>
+    <div class="op reveal d5" style="align-self:center;">…</div>
+    <div class="head-card reveal d5">
+      <div class="col-name name-amber">head 12</div>
+      <div class="attn-grid small" id="s8h12"></div>
+      <div class="op" style="font-size:22px;">↓</div>
+      <div class="vec vec-green" id="s8o12"></div>
+    </div>
+  </div>
+  <div class="shape-big reveal d5" style="margin-top:28px;">head₁ , head₂ , … head₁₂ → each (N+1, 64)</div>
+  <div class="note reveal d5">every head runs the same attention on the same input — but with its own learned Wq/Wk/Wv</div>
+  <button class="replay" data-replay="8">↻ replay</button>
+</section>
+
+<!-- SCENE 9 — concat + final projection -->
+<section class="scene" data-scene="9">
+  <h1 class="title reveal">Concatenate + final projection</h1>
+  <div class="stage" style="gap:30px;">
+    <div class="item reveal d2">
+      <div class="col-name name-green">concat(head₁ … head₁₂)</div>
+      <div class="hconcat" id="s9concat"></div>
+      <div class="col-label">12 × 64 = (768,)</div>
+    </div>
+    <div class="op reveal d3">@</div>
+    <div class="item reveal d3">
+      <div class="col-name name-teal">Wo</div>
+      <div class="matrix" id="s9wo" style="grid-template-columns:repeat(6,1fr);"></div>
+      <div class="col-label">(768 × 768) · learnable</div>
+    </div>
+    <div class="op reveal d4">=</div>
+    <div class="item reveal d4">
+      <div class="col-name name-green">contextual</div>
+      <div class="vec vec-green" id="s9out"></div>
+      <div class="col-label">(768,)</div>
+    </div>
+  </div>
+  <div class="note reveal d5">Wo mixes the heads and projects back to model size</div>
+  <button class="replay" data-replay="9">↻ replay</button>
+</section>
+
+<!-- SCENE 10 — full pipeline recap -->
+<section class="scene" data-scene="10">
+  <h1 class="title reveal">Full multi-head attention pipeline</h1>
+  <div class="pipe">
+    <div class="pipe-step reveal d1">Patch embeddings X <span class="ps-shape">(N+1, 768)</span></div>
+    <div class="pipe-arrow reveal d1">↓</div>
+    <div class="pipe-step reveal d1">Split into h = 12 heads <span class="ps-shape">each dₖ = 64</span></div>
+    <div class="pipe-arrow reveal d2">↓</div>
+    <div class="pipe-step reveal d2">Each head: Q, K, V → scaled dot-product attention <span class="ps-shape">per head (N+1, 64)</span></div>
+    <div class="pipe-arrow reveal d2">↓</div>
+    <div class="pipe-step reveal d3">Concatenate heads <span class="ps-shape">(N+1, 768)</span></div>
+    <div class="pipe-arrow reveal d3">↓</div>
+    <div class="pipe-step reveal d3">Project with Wo <span class="ps-shape">(N+1, 768)</span></div>
+    <div class="pipe-arrow reveal d4">↓</div>
+    <div class="pipe-step reveal d4" style="border-color:var(--green); background:var(--green-soft);">Contextual embeddings <span class="ps-shape">(N+1, 768)</span></div>
+    <div class="pipe-arrow reveal d5">↓</div>
+    <div class="pipe-step reveal d5" style="color:var(--ink-soft);">Add &amp; Norm → MLP → <span class="ps-shape">… rest of the encoder</span></div>
+  </div>
+</section>
+
+<script>
+const CAT_URL = "https://cdn.omlet.com/images/cache/850/567/breed_abyssinian_cat.webp";
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, REDUCED ? 0 : ms));
+
+// stable pseudo-random in 0..1 (seeded sin)
+function sv(i, seed){ const n = Math.sin(i*12.9898 + seed*78.233) * 43758.5453; return n - Math.floor(n); }
+const signed = (i, seed) => sv(i, seed) * 2 - 1;
+
+// cat images with gradient fallback
+['cat1','cat6'].forEach(id => {
+  const img = document.getElementById(id);
+  if(!img) return;
+  img.src = CAT_URL;
+  img.onerror = () => { img.style.background = 'linear-gradient(135deg,#F39C12,#E2563C 50%,#7C3AED)'; img.removeAttribute('src'); };
+});
+
+// ── generic builders ───────────────────────────────────────────
+async function popVec(el, n, colorClass, opts = {}){
+  el.className = 'vec ' + colorClass; el.innerHTML = '';
+  for(let i=0;i<n;i++){
+    const d = document.createElement('div'); d.className = 'vcell';
+    if(opts.labels) d.textContent = opts.labels[i];
+    else if(opts.vals) d.textContent = opts.vals[i];
+    d.style.opacity = '0'; el.appendChild(d);
+  }
+  for(const c of el.children){ c.classList.add('anim-pop'); c.style.opacity = '1'; await sleep(40); }
+}
+
+async function fillMatrix(el, count, cols, seed){
+  el.innerHTML = ''; el.style.gridTemplateColumns = `repeat(${cols},1fr)`;
+  for(let i=0;i<count;i++){ const c = document.createElement('div'); c.className = 'mcell'; el.appendChild(c); }
+  let k = 0;
+  for(const c of el.children){ c.style.transition = 'opacity .16s'; c.style.opacity = (0.4 + 0.55*sv(k, seed)).toFixed(2); if(k++ % cols === 0) await sleep(15); }
+}
+
+async function fillGrid(el, rows, cols, cellCls, seed){
+  el.innerHTML = ''; el.style.gridTemplateColumns = `repeat(${cols},1fr)`;
+  for(let i=0;i<rows*cols;i++){ const c = document.createElement('div'); c.className = cellCls; el.appendChild(c); }
+  let k = 0;
+  for(const c of el.children){ c.style.transition = 'opacity .14s'; c.style.opacity = (0.22 + 0.72*sv(k, seed)).toFixed(2); if(k++ % cols === 0) await sleep(12); }
+}
+
+function buildSeq(el, items){
+  el.innerHTML = '';
+  return items.map(it => {
+    const d = document.createElement('div');
+    if(it.ell){ d.className = 'seqvec sv-ell'; d.textContent = '…'; }
+    else { d.className = 'seqvec ' + it.cls; d.textContent = it.t; }
+    el.appendChild(d);
+    return d;
+  });
+}
+
+// ── Scene 1 — recap bridge ─────────────────────────────────────
+async function animScene1(){
+  const items = [
+    {t:'CLS', cls:'sv-amber'}, {t:'e1', cls:'sv-purple'}, {t:'e2', cls:'sv-purple'},
+    {t:'e3', cls:'sv-purple'}, {t:'e4', cls:'sv-purple'}, {ell:true}, {t:'eN', cls:'sv-purple'}
+  ];
+  const cells = buildSeq(document.getElementById('s1seq'), items);
+  cells.forEach(c => { c.style.opacity = '0'; c.style.transform = 'translateY(16px)'; });
+  for(const c of cells){
+    await sleep(70);
+    c.style.transition = 'all .3s'; c.style.opacity = '1'; c.style.transform = 'translateY(0)';
+  }
+}
+
+// ── Scene 2 — take one embedding (clean extract, no overlap) ────
+async function animScene2(){
+  const items = [
+    {t:'CLS', cls:'sv-amber'}, {t:'e1', cls:'sv-purple'}, {t:'e2', cls:'sv-purple'},
+    {t:'e3', cls:'sv-purple'}, {t:'e4', cls:'sv-purple'}, {ell:true}, {t:'eN', cls:'sv-purple'}
+  ];
+  const cells = buildSeq(document.getElementById('s2seq'), items);
+  cells.forEach(c => { c.style.opacity = '0'; c.style.transition = 'opacity .4s, box-shadow .3s'; });
+  // reset extracted parts
+  const arrow = document.getElementById('s2arrow');
+  const pickBox = document.getElementById('s2pick');
+  arrow.style.opacity = '0';
+  pickBox.style.opacity = '0'; pickBox.style.transform = 'translateY(14px)';
+  // 1) row pops in
+  for(const c of cells){ await sleep(45); c.classList.add('anim-pop'); c.style.opacity = '1'; }
+  await sleep(450);
+  // 2) dim everything except the chosen token (no scaling → nothing overlaps)
+  const pick = 3; // e3
+  cells.forEach((c, i) => { if(i !== pick) c.style.opacity = '0.16'; });
+  const chosen = cells[pick];
+  chosen.style.boxShadow = '0 0 0 3px var(--purple)';
+  chosen.style.borderRadius = '6px';
+  await sleep(550);
+  // 3) extract it: arrow appears, then the token expands into its 768-dim vector below
+  arrow.style.opacity = '1';
+  await sleep(350);
+  pickBox.style.opacity = '1'; pickBox.style.transform = 'translateY(0)';
+  await sleep(300);
+  const vec = document.getElementById('s2vec'); vec.innerHTML = '';
+  const N = 8;
+  for(let i=0;i<N;i++){
+    const d = document.createElement('div'); d.className = 'vcell';
+    d.textContent = i===N-1 ? '…' : signed(i, 23).toFixed(1);
+    d.style.opacity = '0'; vec.appendChild(d);
+    await sleep(55); d.classList.add('anim-pop'); d.style.opacity = '1';
+  }
+  vec.classList.remove('pulsing'); void vec.offsetWidth; vec.classList.add('pulsing');
+}
+
+// ── Scene 3 — project into Q, K, V ─────────────────────────────
+async function animScene3(){
+  await popVec(document.getElementById('s3x'), 6, 'vec-purple', { vals: Array.from({length:6},(_,i)=>signed(i,3).toFixed(1)) });
+  await sleep(150);
+  const branches = [
+    ['s3Wq','s3q',31], ['s3Wk','s3k',32], ['s3Wv','s3v',33]
+  ];
+  for(const [wid, oid, seed] of branches){
+    await fillMatrix(document.getElementById(wid), 24, 4, seed);
+    await popVec(document.getElementById(oid), 5, 'vec-coral', { vals: Array.from({length:5},(_,i)=>signed(i,seed).toFixed(1)) });
+    await sleep(80);
+  }
+}
+
+// ── Scene 4 — scaled dot-product attention ─────────────────────
+async function animScene4(){
+  const K = 5;
+  const klabels = ['k₁','k₂','k₃','k₄','kₙ'];
+  // q
+  await popVec(document.getElementById('s4q'), 5, 'vec-coral', { vals: Array.from({length:5},(_,i)=>signed(i,41).toFixed(1)) });
+  // k stack
+  const ks = document.getElementById('s4ks'); ks.innerHTML = '';
+  for(let j=0;j<K;j++){
+    const row = document.createElement('div'); row.className = 'minivec';
+    const lab = document.createElement('div'); lab.className = 'mlabel'; lab.textContent = klabels[j]; row.appendChild(lab);
+    for(let c=0;c<4;c++){ const cell = document.createElement('div'); cell.className = 'mvcell'; cell.style.background = 'var(--coral)'; row.appendChild(cell); }
+    ks.appendChild(row);
+    for(const cell of row.querySelectorAll('.mvcell')){ cell.classList.add('anim-pop'); cell.style.opacity = (0.55 + 0.4*sv(j*4 + Math.random(), 42)).toFixed(2); }
+    await sleep(70);
+  }
+  // raw scores + softmax weights
+  const raw = Array.from({length:K},(_,j)=> sv(j,51)*7 - 1.5);   // ~ -1.5 .. 5.5
+  const scaled = raw.map(r => r/8);
+  const exps = scaled.map(Math.exp);
+  const sum = exps.reduce((a,b)=>a+b,0);
+  const w = exps.map(e => e/sum);
+  // build score rows
+  const sc = document.getElementById('s4scores'); sc.innerHTML = '';
+  const bars = [];
+  for(let j=0;j<K;j++){
+    const row = document.createElement('div'); row.className = 'score-row';
+    const lab = document.createElement('div'); lab.className = 'score-klabel'; lab.textContent = klabels[j];
+    const track = document.createElement('div'); track.className = 'score-track';
+    const bar = document.createElement('div'); bar.className = 'score-bar';
+    const val = document.createElement('div'); val.className = 'score-val'; val.textContent = '';
+    track.appendChild(bar); track.appendChild(val);
+    row.appendChild(lab); row.appendChild(track); sc.appendChild(row);
+    bars.push({ bar, val });
+  }
+  // 1) q dots each k → raw score
+  const qcells = [...document.getElementById('s4q').children];
+  const krows = [...ks.children];
+  for(let j=0;j<K;j++){
+    qcells.forEach(c => c.classList.add('glow'));
+    krows[j].querySelectorAll('.mvcell').forEach(c => c.classList.add('glow'));
+    await sleep(180);
+    bars[j].bar.style.width = (18 + (raw[j]+2)*22) + 'px';
+    bars[j].val.textContent = raw[j].toFixed(1);
+    await sleep(120);
+    qcells.forEach(c => c.classList.remove('glow'));
+    krows[j].querySelectorAll('.mvcell').forEach(c => c.classList.remove('glow'));
+  }
+  await sleep(350);
+  // 2) softmax normalize → weights (resize bars to sum-to-1)
+  for(let j=0;j<K;j++){
+    bars[j].bar.style.width = Math.max(4, w[j]*180) + 'px';
+    bars[j].val.textContent = w[j].toFixed(2);
+    await sleep(70);
+  }
+  await sleep(300);
+  // v stack
+  const vs = document.getElementById('s4vs'); vs.innerHTML = '';
+  for(let j=0;j<K;j++){
+    const row = document.createElement('div'); row.className = 'minivec';
+    const lab = document.createElement('div'); lab.className = 'mlabel'; lab.textContent = 'v' + (j===K-1?'ₙ':(j+1)); row.appendChild(lab);
+    for(let c=0;c<4;c++){ const cell = document.createElement('div'); cell.className = 'mvcell'; cell.style.background = 'var(--coral)'; row.appendChild(cell); }
+    vs.appendChild(row);
+    for(const cell of row.querySelectorAll('.mvcell')){ cell.classList.add('anim-pop'); cell.style.opacity = (0.55 + 0.4*sv(j*4, 43)).toFixed(2); }
+    await sleep(50);
+  }
+  // weights list mirrors softmax
+  const wl = document.getElementById('s4weights'); wl.innerHTML = '';
+  for(let j=0;j<K;j++){
+    const row = document.createElement('div'); row.className = 'score-row';
+    const lab = document.createElement('div'); lab.className = 'score-klabel'; lab.textContent = klabels[j];
+    const track = document.createElement('div'); track.className = 'score-track';
+    const bar = document.createElement('div'); bar.className = 'score-bar'; bar.style.width = Math.max(4, w[j]*150) + 'px';
+    const val = document.createElement('div'); val.className = 'score-val'; val.textContent = w[j].toFixed(2);
+    track.appendChild(bar); track.appendChild(val); row.appendChild(lab); row.appendChild(track); wl.appendChild(row);
+  }
+  await sleep(250);
+  // 3) weighted sum → green output
+  const vrows = [...vs.children];
+  const wrows = [...wl.children];
+  for(let j=0;j<K;j++){
+    vrows[j].querySelectorAll('.mvcell').forEach(c => c.classList.add('glow'));
+    wrows[j].classList.add('glow');
+    await sleep(140);
+    vrows[j].querySelectorAll('.mvcell').forEach(c => c.classList.remove('glow'));
+    wrows[j].classList.remove('glow');
+  }
+  const out = document.getElementById('s4out');
+  await popVec(out, 5, 'vec-green', { vals: Array.from({length:5},(_,i)=>signed(i,61).toFixed(1)) });
+  out.classList.remove('pulsing'); void out.offsetWidth; out.classList.add('pulsing');
+}
+
+// ── Scene 5 — matrix form, all patches at once ─────────────────
+async function animScene5(){
+  await fillGrid(document.getElementById('s5x'), 7, 8, 'gcell-x', 71);
+  await sleep(120);
+  await fillGrid(document.getElementById('s5attn'), 7, 7, 'acell', 72);
+  await sleep(120);
+  await fillGrid(document.getElementById('s5v'), 7, 5, 'gcell-coral', 73);
+  await sleep(120);
+  await fillGrid(document.getElementById('s5out'), 7, 5, 'gcell-green', 74);
+}
+
+// ── Scene 6 — one perspective only ─────────────────────────────
+async function animScene6(){
+  const lens = document.getElementById('s6lens');
+  const q = document.getElementById('s6q');
+  const spots = [['10%','22%'],['55%','20%'],['48%','55%'],['18%','58%'],['40%','35%']];
+  for(const [l,t] of spots){
+    lens.style.left = l; lens.style.top = t;
+    await sleep(750);
+  }
+  q.classList.remove('pulsing'); void q.offsetWidth; q.classList.add('pulsing');
+  q.style.fontWeight = '700';
+}
+
+// ── Scene 7 — split the wide matrix into heads ─────────────────
+async function animScene7(){
+  const w = document.getElementById('s7wide'); w.innerHTML = ''; w.classList.remove('split');
+  const H = 12, ROWS = 6;
+  const slices = [];
+  for(let h=0;h<H;h++){
+    const slice = document.createElement('div'); slice.className = 'head-slice';
+    for(let r=0;r<ROWS;r++){ const c = document.createElement('div'); c.className = 'hcell'; slice.appendChild(c); }
+    const num = document.createElement('div'); num.className = 'hnum'; num.textContent = h+1; slice.appendChild(num);
+    w.appendChild(slice); slices.push(slice);
+  }
+  let idx = 0;
+  for(const slice of slices){
+    for(const c of slice.querySelectorAll('.hcell')){ c.style.transition = 'opacity .12s'; c.style.opacity = (0.35 + 0.6*sv(idx, 81)).toFixed(2); idx++; }
+    await sleep(28);
+  }
+  await sleep(350);
+  w.classList.add('split');
+  slices.forEach((s, i) => setTimeout(() => { s.querySelector('.hnum').style.opacity = '1'; }, i*40));
+}
+
+// ── Scene 8 — heads attend independently ───────────────────────
+async function animScene8(){
+  const heads = [
+    ['s8h1','s8o1',91], ['s8h2','s8o2',92], ['s8h3','s8o3',93], ['s8h12','s8o12',94]
+  ];
+  for(const [hid, oid, seed] of heads){
+    await fillGrid(document.getElementById(hid), 5, 5, 'acell', seed);
+    await popVec(document.getElementById(oid), 4, 'vec-green', { vals: Array.from({length:4},(_,i)=>signed(i,seed).toFixed(1)) });
+    await sleep(60);
+  }
+}
+
+// ── Scene 9 — concat + Wo ──────────────────────────────────────
+async function animScene9(){
+  const cc = document.getElementById('s9concat'); cc.innerHTML = ''; cc.classList.add('sep');
+  for(let h=0;h<12;h++){
+    const g = document.createElement('div'); g.className = 'hgroup';
+    for(let i=0;i<3;i++){ const c = document.createElement('div'); c.className = 'hgcell'; g.appendChild(c); }
+    cc.appendChild(g);
+  }
+  for(const g of cc.children){
+    for(const c of g.children){ c.classList.add('anim-pop'); c.style.opacity = '1'; }
+    await sleep(55);
+  }
+  await sleep(350);
+  cc.classList.remove('sep'); // merge into one long vector
+  await sleep(550);
+  await fillMatrix(document.getElementById('s9wo'), 36, 6, 95);
+  await sleep(120);
+  const out = document.getElementById('s9out');
+  await popVec(out, 6, 'vec-green', { vals: Array.from({length:6},(_,i)=>signed(i,96).toFixed(1)) });
+  out.classList.remove('pulsing'); void out.offsetWidth; out.classList.add('pulsing');
+}
+
+// ── wiring ─────────────────────────────────────────────────────
+const animators = {1:animScene1, 2:animScene2, 3:animScene3, 4:animScene4, 5:animScene5, 6:animScene6, 7:animScene7, 8:animScene8, 9:animScene9};
+const played = {};
+
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if(e.isIntersecting){
+      e.target.querySelectorAll?.('.reveal').forEach(el => el.classList.add('in'));
+      const sc = e.target.dataset?.scene;
+      if(sc && animators[sc] && !played[sc]){ played[sc] = true; setTimeout(() => animators[sc](), 350); }
+    }
+  });
+}, { threshold: 0.3 });
+document.querySelectorAll('.scene').forEach(s => io.observe(s));
+
+document.querySelectorAll('[data-replay]').forEach(btn => {
+  btn.addEventListener('click', () => { const n = btn.dataset.replay; if(animators[n]) animators[n](); });
+});
+
+// press "r" to replay the scene currently centered in the viewport
+window.addEventListener('keydown', ev => {
+  if(ev.key !== 'r' && ev.key !== 'R') return;
+  if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const mid = window.innerHeight/2;
+  let current = null, best = Infinity;
+  document.querySelectorAll('.scene[data-scene]').forEach(s => {
+    const rect = s.getBoundingClientRect();
+    const dist = Math.abs((rect.top + rect.height/2) - mid);
+    if(dist < best){ best = dist; current = s; }
+  });
+  if(current){ const n = current.dataset.scene; if(animators[n]) animators[n](); }
+});
+
+const prog = document.getElementById('progress');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  prog.style.width = (h.scrollTop/(h.scrollHeight - h.clientHeight)*100) + '%';
+});
+
+// ── Annotation overlay: freehand drawing on top of the page ────
+(function(){
+  const canvas = document.getElementById('annotateCanvas');
+  const btn = document.getElementById('annotateBtn');
+  const clearBtn = document.getElementById('annotateClearBtn');
+  const colors = document.getElementById('annotateColors');
+  const ctx = canvas.getContext('2d');
+  let drawing = false, active = false, currentColor = '#FF5A5F', erasing = false;
+
+  function applyStyle(){
+    if(erasing){
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineWidth = 24; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = currentColor; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    }
+  }
+  function resize(){
+    const data = canvas.width ? ctx.getImageData(0,0,canvas.width,canvas.height) : null;
+    canvas.width = window.innerWidth;
+    canvas.height = document.documentElement.scrollHeight;
+    if(data) ctx.putImageData(data, 0, 0);
+    applyStyle();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+  // grow the canvas if the page gets taller (animations revealing content)
+  const ro = new ResizeObserver(() => {
+    const need = document.documentElement.scrollHeight;
+    if(need > canvas.height){ const data = ctx.getImageData(0,0,canvas.width,canvas.height); canvas.height = need; ctx.putImageData(data,0,0); applyStyle(); }
+  });
+  ro.observe(document.body);
+
+  function pos(e){
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX + window.scrollX, y: t.clientY + window.scrollY };
+  }
+  function start(e){ drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+  function move(e){ if(!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+  function end(){ drawing = false; }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: true });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+
+  btn.addEventListener('click', () => {
+    active = !active;
+    canvas.classList.toggle('active', active);
+    btn.classList.toggle('active', active);
+    clearBtn.classList.toggle('show', active);
+    colors.classList.toggle('show', active);
+  });
+  clearBtn.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); });
+  colors.querySelectorAll('.annotate-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      erasing = false;
+      currentColor = sw.dataset.color;
+      applyStyle();
+      colors.querySelectorAll('.annotate-swatch, .annotate-eraser').forEach(s => s.classList.remove('sel'));
+      sw.classList.add('sel');
+    });
+  });
+  document.getElementById('annotateEraser').addEventListener('click', () => {
+    erasing = !erasing;
+    applyStyle();
+    colors.querySelectorAll('.annotate-swatch, .annotate-eraser').forEach(s => s.classList.remove('sel'));
+    if(erasing) document.getElementById('annotateEraser').classList.add('sel');
+    else { colors.querySelector('.annotate-swatch[data-color="'+currentColor+'"]').classList.add('sel'); }
+  });
+})();
+</script>
+</body>
+</html>
